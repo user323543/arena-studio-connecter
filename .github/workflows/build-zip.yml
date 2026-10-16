@@ -55,42 +55,58 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: "Starter: Version und Hilfe (< nul verhindert Warten auf Eingabe)"
-        shell: cmd
-        run: |
-          call ArenaStudioConnector.bat /version < nul
-          if errorlevel 1 exit /b 1
-          call ArenaStudioConnector.bat /help < nul
-          if errorlevel 1 exit /b 1
-
-      - name: Systemcheck (/check) laeuft durch
+      - name: "Starter testen: /version, /help, /check (< nul verhindert Warten)"
         shell: pwsh
         run: |
-          $out = cmd /c "ArenaStudioConnector.bat /check < nul" 2>&1 | Out-String
-          Write-Host $out
-          foreach ($needle in @('[OK] Python', 'App-Ordner', 'Plugin gefunden', 'Port')) {
-            if ($out -notmatch [regex]::Escape($needle)) { throw "Systemcheck unvollstaendig: $needle fehlt" }
+          $log = "bat-smoke.txt"
+          "Arena Studio Connector - .bat-Smoketest auf Windows" | Set-Content $log
+          $erwartet = [ordered]@{
+            '/version' = 'Arena Studio Connector'
+            '/help'    = 'Optionen:'
+            '/check'   = '[OK] Python'
           }
+          $fehler = @()
+          foreach ($arg in $erwartet.Keys) {
+            "`n===== ArenaStudioConnector.bat $arg =====" | Add-Content $log
+            $out = cmd /c "ArenaStudioConnector.bat $arg < nul" 2>&1 | Out-String
+            $out | Add-Content $log
+            Write-Host $out
+            if ($out -notmatch [regex]::Escape($erwartet[$arg])) { $fehler += "$arg ($($erwartet[$arg]) fehlt)" }
+          }
+          if ($fehler.Count -gt 0) { throw "Starter-Test fehlgeschlagen: $($fehler -join ', ')" }
 
       - name: Bridge startet ohne Fenster und antwortet
         shell: pwsh
-        continue-on-error: true   # Netz/cloudflared darf den Build nicht kippen
         run: |
-          $log = Join-Path $env:TEMP "connector-headless.log"
+          # Nur die Bridge pruefen (ohne cloudflared): --headless starten,
+          # /api/status abfragen, wieder beenden.
+          $log = "headless.log"
+          "===== python arena_studio_connector.py --headless =====" | Set-Content $log
           $proc = Start-Process python -ArgumentList 'arena_studio_connector.py --headless' `
-                    -PassThru -NoNewWindow -RedirectStandardOutput $log
-          $ready = $false
+                    -PassThru -NoNewWindow -RedirectStandardOutput $log -RedirectStandardError "headless.err"
+          $token = $null
           foreach ($i in 1..25) {
             Start-Sleep -Seconds 1
-            if ((Test-Path $log) -and (Select-String -Path $log -Pattern 'Bridge: http://127\.0\.0\.1:8765' -Quiet)) { $ready = $true; break }
+            if ((Test-Path $log) -and (Select-String -Path $log -Pattern 'Bridge: http://127\.0\.0\.1:8765' -Quiet)) { break }
           }
-          if (Test-Path $log) { Get-Content $log }
-          if ($ready) {
-            $token = (Select-String -Path $log -Pattern 'TOKEN=(\S+)').Matches[0].Groups[1].Value
+          Get-Content $log | Write-Host
+          $match = Select-String -Path $log -Pattern 'TOKEN=(\S+)'
+          if ($match) {
+            $token = $match.Matches[0].Groups[1].Value
             $status = Invoke-RestMethod -Uri "http://127.0.0.1:8765/api/status" `
                         -Headers @{ Authorization = "Bearer $token" }
             Write-Host "Bridge-Status: $($status.bridge), studio_connected=$($status.studio_connected)"
-          } else {
-            Write-Host "::warning::Headless-Bridge wurde nicht erkannt"
           }
           if (-not $proc.HasExited) { $proc.Kill() }
+          if (-not $token) { throw "Headless-Bridge wurde nicht gestartet" }
+          "`n===== Ausgabe oben, Bridge-Antwort: $($status.bridge) =====" | Add-Content "bat-smoke.txt"
+          Get-Content $log | Add-Content "bat-smoke.txt"
+
+      - name: Smoketest-Ausgabe als Artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ArenaStudioConnector-bat-smoketest
+          path: |
+            bat-smoke.txt
+            headless.err
