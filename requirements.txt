@@ -1,0 +1,2 @@
+# Laufzeit: nur Python-Standardbibliothek – keine Abhängigkeiten nötig.
+# Zum Bauen der EXE:  pip install pyinstaller   (macht build_exe.bat automatisch)

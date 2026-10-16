@@ -1,0 +1,19 @@
+So sieht der kopierte Prompt aus (Beispiel mit Platzhaltern – die echte Version
+erzeugt die App automatisch pro Place mit deiner Tunnel-URL + deinem Token):
+------------------------------------------------------------------------------
+Verbinde dich mit meinem Roblox Studio und arbeite NUR an dieser Place:
+- Place / Experience: <Name>
+- PlaceId: <PlaceId>
+- UniverseId (Experience-Id): <UniverseId>
+
+VERBINDUNGSDATEN (streng vertraulich, nirgends posten/loggen):
+- Bridge-URL (Cloudflare Tunnel): https://<xxx>.trycloudflare.com
+- Token: <Token>
+... (danach folgt in der echten Version die komplette Anleitung für Arena AI:
+     Verbindungsprüfung, alle Kommandos, Curl-Beispiele, Open-Cloud-Proxy für
+     GamePässe/Dev-Produkte und die Sicherheitsregeln – siehe
+     build_prompt() in arena_studio_connector.py)
+------------------------------------------------------------------------------
+Früher war das eine .bat, die diesen Prompt kopiert hat – die EXE macht das
+jetzt besser: Sie zeigt deine Places und kopiert den Prompt passend zur
+angeklickten Place. Eine .bat ist daher nicht mehr nötig.

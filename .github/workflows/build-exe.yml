@@ -1,0 +1,38 @@
+name: Build Windows EXE
+
+# Baut die EXE automatisch auf einem Windows-Runner.
+# Download: Repo → Actions → letzter Lauf → Artifact "ArenaStudioConnector-exe"
+# Oder: ein Tag wie v1.0 pushen → EXE wird ans GitHub Release gehängt.
+on:
+  push:
+    branches: [main, "arena/**"]
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: EXE bauen
+        run: |
+          pip install pyinstaller
+          pyinstaller --noconfirm ArenaStudioConnector.spec
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ArenaStudioConnector-exe
+          path: |
+            dist/ArenaStudioConnector.exe
+            .env.example
+            config.example.json
+            README.md
+      - name: An Release hängen (nur bei Tag)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/ArenaStudioConnector.exe

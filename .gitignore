@@ -1,0 +1,12 @@
+# Geheimnisse – NIEMALS committen!
+.env
+config.json
+
+# Build
+dist/
+build/
+*.spec.bak
+cloudflared.exe
+cloudflared
+__pycache__/
+*.pyc
