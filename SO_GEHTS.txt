@@ -17,9 +17,12 @@
 3. IN DER APP
    a) Roblox-Username eintragen -> "Places laden"
    b) "Bridge + Tunnel starten" -> warten, bis die Tunnel-URL erscheint
-   c) "Studio-Plugin installieren" -> Roblox Studio neu starten, die
-      gewuenschte Place oeffnen, im Toolbar-Button "ArenaBridge" klicken und
-      beim ersten Mal den Zugriff auf 127.0.0.1 erlauben
+   c) Roblox Studio neu starten, die gewuenschte Place oeffnen, im
+      Toolbar-Button "ArenaBridge" klicken und beim ersten Mal den Zugriff
+      auf 127.0.0.1 erlauben
+      -> Das Studio-Plugin wird AUTOMATISCH installiert, und zwar nach
+         %LOCALAPPDATA%\Roblox\Plugins\ArenaBridgePlugin.lua
+         (kein Klick noetig, passiert bei jedem App-Start)
    d) Beim gewuenschten Spiel "Prompt kopieren" -> bei Arena AI einfuegen
 
 4. OPTIONAL: Creator-Dashboard-Aktionen (GamePaesse, Dev-Produkte, Badges ...)
@@ -32,6 +35,9 @@ PROBLEME?
    ArenaStudioConnector-Konsole.bat  -> gleicher Start, aber mit allen Meldungen
    ArenaStudioConnector.bat /check   -> Systemcheck: Python, tkinter, Plugin,
                                         Port, cloudflared, Plugin-Ordner
+   ArenaStudioConnector.bat /plugin  -> Studio-Plugin sofort (neu) installieren
+   ArenaStudioConnector.bat /newtoken-> neuen Bridge-Token erzeugen + Plugin
+                                        neu schreiben (alter Token ungueltig)
    ArenaStudioConnector.bat /unblock -> Windows-Sperre "Datei aus dem Internet"
                                         entfernen, falls Windows blockt
    last_error.log                    -> entsteht automatisch, wenn die App beim
@@ -42,7 +48,9 @@ DATEIEN IN DIESEM ORDNER
    ArenaStudioConnector-Konsole.bat  Gleiches, aber mit Meldungen
    arena_studio_connector.py         Die App selbst (GUI + Bridge + Tunnel)
    VERSION                           Version der App (fuer /version)
-   plugin\ArenaBridgePlugin.lua      Roblox-Studio-Plugin (wird installiert)
+   plugin\ArenaBridgePlugin.lua      Roblox-Studio-Plugin (wird beim Start
+                                     automatisch nach %LOCALAPPDATA%\Roblox\Plugins
+                                     installiert)
    .env.example                      Tutorial fuer den Roblox API-Key
    config.example.json               Vorlage fuer config.json (Username, Port)
    prompt_beispiel.txt               So sieht der kopierte Prompt aus

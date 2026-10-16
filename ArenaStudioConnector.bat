@@ -2,7 +2,7 @@
 rem ===========================================================================
 rem  Arena Studio Connector - Starter fuer Windows
 rem  Doppelklick genuegt: die Datei sucht Python, prueft alles und startet die App.
-rem  Optionen: /console  /headless  /check  /unblock  /help
+rem  Optionen: /console  /headless  /check  /plugin  /newtoken  /unblock  /help
 rem ===========================================================================
 chcp 65001 >nul 2>&1
 setlocal EnableExtensions EnableDelayedExpansion
@@ -35,6 +35,8 @@ set "A=%~1"
 if /i "!A!"=="/console"  goto opt_console
 if /i "!A!"=="/headless" goto opt_headless
 if /i "!A!"=="/check"    goto opt_check
+if /i "!A!"=="/plugin"   goto opt_plugin
+if /i "!A!"=="/newtoken" goto opt_newtoken
 if /i "!A!"=="/unblock"  goto opt_unblock
 if /i "!A!"=="/version"  goto opt_version
 if /i "!A!"=="/help"     goto help
@@ -42,7 +44,7 @@ if /i "!A!"=="-h"        goto help
 if /i "!A!"=="--help"    goto help
 echo.
 echo [!] Unbekannte Option: !A!
-echo     Erlaubt sind: /console  /headless  /check  /unblock  /help
+echo     Erlaubt sind: /console  /headless  /check  /plugin  /newtoken  /unblock  /help
 goto help
 
 :opt_console
@@ -57,6 +59,16 @@ goto argloop
 
 :opt_check
 set "MODE=check"
+shift
+goto argloop
+
+:opt_plugin
+set "MODE=plugin"
+shift
+goto argloop
+
+:opt_newtoken
+set "MODE=newtoken"
 shift
 goto argloop
 
@@ -93,7 +105,7 @@ if not exist "%APPPATH%" (
 
 if not exist "%PLUGINPATH%" (
     echo [!] Hinweis: "%PLUGINPATH%" wurde nicht gefunden.
-    echo     Die App startet, aber "Studio-Plugin installieren" funktioniert
+    echo     Die App startet, aber die automatische Plugin-Installation funktioniert
     echo     dann nicht. Meist wurde das ZIP nur teilweise entpackt.
     echo.
 )
@@ -162,6 +174,8 @@ rem Bei /check und /headless ueberspringen: die Diagnose soll auch dann laufen,
 rem wenn tkinter fehlt (genau dann braucht man sie naemlich).
 if /i "!MODE!"=="headless" goto skip_tk
 if /i "!MODE!"=="check"    goto skip_tk
+if /i "!MODE!"=="plugin"   goto skip_tk
+if /i "!MODE!"=="newtoken" goto skip_tk
 "%PY_CMD%" %PY_ARGS% -c "import tkinter" >nul 2>&1
 if errorlevel 1 goto no_tk
 :skip_tk
@@ -175,6 +189,8 @@ echo [OK] App-Code geladen.
 if /i "!MODE!"=="check"    goto run_check
 if /i "!MODE!"=="headless" goto run_headless
 if /i "!MODE!"=="console"  goto run_console
+if /i "!MODE!"=="plugin"   goto run_plugin
+if /i "!MODE!"=="newtoken" goto run_newtoken
 
 rem --------------------------------------------------------------------------
 rem  Standard: GUI ohne Konsolenfenster
@@ -202,7 +218,8 @@ echo.
 echo [i] Naechste Schritte in der App:
 echo     1. Roblox-Username eintragen  -^>  "Places laden"
 echo     2. "Bridge + Tunnel starten"  -^>  warten bis die Tunnel-URL da ist
-echo     3. "Studio-Plugin installieren"  -^>  Roblox Studio neu starten
+echo     3. Roblox Studio neu starten - das Studio-Plugin wurde AUTOMATISCH
+echo        installiert (Ordner: %LOCALAPPDATA%\Roblox\Plugins)
 echo     4. Beim gewuenschten Spiel "Prompt kopieren"  -^>  bei Arena AI einfuegen
 echo.
 goto end_ok
@@ -238,6 +255,24 @@ goto end_ok
 
 :run_check
 "%PY_CMD%" %PY_ARGS% "%APPPATH%" --check
+set "RC=!errorlevel!"
+echo.
+pause
+if not "!RC!"=="0" goto fail_no_pause
+goto end_ok
+
+:run_plugin
+rem Plugin ohne GUI in den Roblox-Plugin-Ordner schreiben
+"%PY_CMD%" %PY_ARGS% "%APPPATH%" --install-plugin
+set "RC=!errorlevel!"
+echo.
+pause
+if not "!RC!"=="0" goto fail_no_pause
+goto end_ok
+
+:run_newtoken
+rem Neuen Bridge-Token erzeugen (der alte wird ungueltig) + Plugin neu schreiben
+"%PY_CMD%" %PY_ARGS% "%APPPATH%" --new-token
 set "RC=!errorlevel!"
 echo.
 pause
@@ -346,6 +381,9 @@ echo   Optionen:
 echo     /console    App mit Konsolenfenster starten  -  zeigt alle Meldungen
 echo     /check      Systemcheck: Python, tkinter, Plugin, Port, cloudflared
 echo     /headless   Nur Bridge + Tunnel, ohne Fenster
+echo     /plugin     Studio-Plugin neu installieren (automatisch in den
+echo                 Roblox-Plugin-Ordner, ohne GUI)
+echo     /newtoken   Neuen Bridge-Token erzeugen und Plugin neu installieren
 echo     /unblock    Windows-Sperre "Datei aus dem Internet" entfernen
 echo     /version    Version dieser App anzeigen
 echo     /help       Diese Hilfe

@@ -1,5 +1,7 @@
 -- ArenaBridgePlugin.lua  –  Arena AI <-> Roblox Studio Bridge
--- Wird von der Connector-App installiert (Platzhalter werden ersetzt).
+-- Wird von der Connector-App beim Start AUTOMATISCH installiert:
+--   %LOCALAPPDATA%\Roblox\Plugins\ArenaBridgePlugin.lua
+-- Platzhalter unten werden dabei durch die echten Werte ersetzt.
 -- Das Plugin spricht NUR mit 127.0.0.1 (dein PC), niemals direkt mit dem Internet.
 local BRIDGE_URL = "__BRIDGE_URL__"       -- z. B. http://127.0.0.1:8765
 local BRIDGE_TOKEN = "__BRIDGE_TOKEN__"   -- gleicher Token wie in der App

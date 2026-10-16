@@ -58,13 +58,38 @@ Nur wenn Arena z. B. GamePässe/Developer-Produkte erstellen soll:
 1. Roblox-Username eintragen → **„Places laden"**.
 2. **„Bridge + Tunnel starten"** → kurz warten, bis die Tunnel-URL erscheint
    (die App lädt `cloudflared` bei Bedarf selbst von GitHub herunter).
-3. **„Studio-Plugin installieren"** → Roblox Studio neu starten, die
-   gewünschte Place öffnen, im Plugin-Toolbar-Button **„ArenaBridge"**
-   klicken und beim ersten Mal den Zugriff auf `127.0.0.1` erlauben.
+3. **Roblox Studio neu starten**, die gewünschte Place öffnen, im
+   Plugin-Toolbar-Button **„ArenaBridge"** klicken und beim ersten Mal den
+   Zugriff auf `127.0.0.1` erlauben. Das Plugin selbst musst du **nicht**
+   installieren – das erledigt die App beim Start automatisch
+   (siehe unten).
 4. In der App beim gewünschten Spiel auf **„📋 Prompt kopieren"** klicken.
 5. Prompt bei **Arena AI einfügen**, danach einfach sagen, was Arena in
    Studio machen soll (z. B. „Baue ein Spawn-Gebäude" oder „Erstelle einen
    GamePass für 100 Robux").
+
+### 5. Studio-Plugin: wird automatisch installiert 🔌
+Beim App-Start schreibt die App `ArenaBridgePlugin.lua` automatisch in den
+Roblox-Plugin-Ordner – mit der lokalen Bridge-Adresse (`127.0.0.1:<Port>`)
+und dem Bridge-Token:
+
+```
+%LOCALAPPDATA%\Roblox\Plugins\ArenaBridgePlugin.lua
+```
+
+- Der **Bridge-Token wird lokal gemerkt** (`config.json`, steht in
+  `.gitignore`). Deshalb genügt die Installation **einmal** – bei jedem
+  weiteren Start prüft die App nur, ob alles aktuell ist.
+- Ist Studio aus dem **Microsoft Store** installiert, wird der Paketordner
+  (`...\Packages\ROBLOXCORPORATION.ROBLOXSTUDIO*\LocalState\Plugins`)
+  zusätzlich mitgenommen, falls vorhanden.
+- Anderer Ordner? Umgebungsvariable `ARENA_PLUGIN_DIR` setzen.
+- Ohne GUI: `ArenaStudioConnector.bat /plugin`
+- Token verloren/weitergegeben? `ArenaStudioConnector.bat /newtoken`
+  erzeugt einen neuen Token und schreibt das Plugin neu (der alte wird
+  ungültig).
+- In der App steht in der Statuszeile, was passiert ist
+  (`installiert`, `aktuell` oder eine Fehlermeldung).
 
 Token & Tunnel-URL gelten nur, solange die App läuft. Zum Trennen einfach
 die App schließen / „Stoppen" klicken.
@@ -77,6 +102,8 @@ die App schließen / „Stoppen" klicken.
 ArenaStudioConnector.bat              # normale App (Fenster, ohne Konsole)
 ArenaStudioConnector-Konsole.bat      # gleiches, aber mit allen Meldungen
 ArenaStudioConnector.bat /check       # Systemcheck: Python, tkinter, Plugin, Port, cloudflared
+ArenaStudioConnector.bat /plugin      # Studio-Plugin jetzt installieren/aktualisieren
+ArenaStudioConnector.bat /newtoken    # neuen Bridge-Token + Plugin neu schreiben
 ArenaStudioConnector.bat /headless    # nur Bridge + Tunnel, ohne Fenster
 ArenaStudioConnector.bat /unblock     # Windows-Sperre „Datei aus dem Internet" entfernen
 ArenaStudioConnector.bat /help        # Hilfe anzeigen
@@ -155,7 +182,13 @@ kein echtes Python daraus und bietet stattdessen die Installation an.
 Meist läuft die App schon in einem anderen Fenster. Sonst in `config.json`
 einen anderen Port eintragen (z. B. `8766`).
 
-**„Studio-Plugin installieren" sagt, die Datei fehle.**
+**„Wo ist das Studio-Plugin nach dem Neustart hin?"**
+Klick in Studio auf den Toolbar-Button **„ArenaBridge"**. Findest du ihn
+nicht, prüfe `ArenaStudioConnector.bat /check` – dort steht der komplette
+Pfad. Zur Not in Studio unter *Plugins → Plugins-Ordner* nachsehen; die
+Installation passiert automatisch bei jedem App-Start.
+
+**Das Plugin sagt „Datei fehle" bzw. die Installation schlägt fehl.**
 Das ZIP wurde nicht komplett entpackt. Komplett entpacken und die App neu
 starten – es muss `plugin\ArenaBridgePlugin.lua` neben der `.bat` liegen.
 
@@ -175,7 +208,7 @@ kleine GUI und nicht nur einen Copy-Befehl.
 | `ArenaStudioConnector-Konsole.bat` | gleicher Start, aber mit Konsolenfenster (Diagnose) |
 | `arena_studio_connector.py` | Komplette App (GUI + Bridge + Tunnel + Prompt-Generator) |
 | `VERSION` | Version für `/version` – `build_zip.py` prüft, dass sie zu `APP_VERSION` passt |
-| `plugin/ArenaBridgePlugin.lua` | Roblox-Studio-Plugin (wird von der App installiert) |
+| `plugin/ArenaBridgePlugin.lua` | Roblox-Studio-Plugin – wird beim App-Start **automatisch** nach `%LOCALAPPDATA%\Roblox\Plugins` installiert |
 | `.env.example` | **Tutorial + Rechte-Liste für den Roblox API-Key** – als `.env` kopieren |
 | `config.example.json` | Vorlage für `config.json` (Username, Port) |
 | `SO_GEHTS.txt` | Kurzanleitung, die im ZIP mitgeliefert wird |

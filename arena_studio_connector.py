@@ -54,7 +54,12 @@ def app_dir() -> Path:
 
     Dort liegen .env, config.json, cloudflared, last_error.log und der Ordner
     plugin/ - also immer dort, wo auch ArenaStudioConnector.bat liegt.
+    Fuer Sonderfaelle (oder Tests) laesst sich der Ordner per Umgebungs-
+    variable ARENA_APP_DIR umbiegen.
     """
+    override = os.environ.get("ARENA_APP_DIR")
+    if override:
+        return Path(override).expanduser().resolve()
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent
     return Path(__file__).resolve().parent
@@ -124,10 +129,40 @@ def load_config() -> dict:
 
 
 def save_config(cfg: dict) -> None:
+    """Speichert die lokale config.json (ohne den Roblox API-Key!)."""
     safe = {k: v for k, v in cfg.items() if k != "roblox_api_key"}
     (app_dir() / "config.json").write_text(
         json.dumps(safe, indent=2, ensure_ascii=False), encoding="utf-8"
     )
+
+
+def ensure_bridge_token(cfg: dict) -> str:
+    """Liefert den Bridge-Token und merkt ihn lokal.
+
+    Warum nicht bei jedem Start neu? Weil das Studio-Plugin den Token fest
+    eingebaut bekommt. Ein stabiler Token heisst: das Plugin wird EINMAL
+    installiert und funktioniert danach bei jedem App-Start, ohne dass man
+    wieder klicken muss. Der Token liegt nur in config.json (steht in
+    .gitignore) und geht ausschliesslich an dein eigenes Studio-Plugin.
+    Mit --new-token (bzw. ArenaStudioConnector.bat /newtoken) wird er ersetzt.
+    """
+    token = (cfg.get("bridge_token") or os.environ.get("BRIDGE_TOKEN") or "").strip()
+    if not token:
+        # Absicherung: falls hier ein unvollstaendiges cfg ankommt, trotzdem den
+        # bereits gespeicherten Token nehmen - sonst wuerde das installierte
+        # Studio-Plugin ploetzlich einen veralteten Token haben.
+        token = (load_config().get("bridge_token") or "").strip()
+    if token:
+        cfg["bridge_token"] = token
+        return token
+    token = secrets.token_urlsafe(32)
+    cfg["bridge_token"] = token
+    try:
+        save_config(cfg)
+    except OSError as exc:
+        print(f"[!] Token konnte nicht in config.json gespeichert werden ({exc})",
+              file=sys.stderr)
+    return token
 
 
 # --------------------------------------------------------------------------- #
@@ -547,10 +582,69 @@ def plugin_source(bridge_url_local: str, token: str) -> str:
     return src.replace("__BRIDGE_URL__", bridge_url_local).replace("__BRIDGE_TOKEN__", token)
 
 
-def plugins_folder() -> Path:
+def plugins_folders() -> list[Path]:
+    """Alle Ordner, in denen Roblox Studio nach Plugins sucht.
+
+    Standard unter Windows ist %LOCALAPPDATA%\\Roblox\\Plugins. Ist Studio aus
+    dem Microsoft Store installiert, liegen die Daten im Paketordner - der wird
+    zusaetzlich mitgenommen, wenn er existiert. Mit ARENA_PLUGIN_DIR laesst
+    sich alles auf einen eigenen Ordner umbiegen.
+    """
+    override = os.environ.get("ARENA_PLUGIN_DIR")
+    if override:
+        return [Path(override).expanduser()]
     if os.name == "nt":
-        return Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "Roblox" / "Plugins"
-    return Path.home() / "Documents" / "Roblox" / "Plugins"
+        local = Path(os.environ.get("LOCALAPPDATA", str(Path.home())))
+        folders = [local / "Roblox" / "Plugins"]
+        packages = local / "Packages"
+        if packages.is_dir():
+            for pkg in sorted(packages.glob("ROBLOXCORPORATION.ROBLOXSTUDIO*")):
+                folders.append(pkg / "LocalState" / "Plugins")
+        return folders
+    return [Path.home() / "Documents" / "Roblox" / "Plugins"]
+
+
+def plugins_folder() -> Path:
+    """Haupt-Plugin-Ordner (das ist der, den Studio unter Windows benutzt)."""
+    return plugins_folders()[0]
+
+
+def install_plugin(port: int, token: str, folders=None) -> list[tuple[Path, str]]:
+    """Installiert/aktualisiert das Studio-Plugin in den Plugin-Ordner(n).
+
+    Rueckgabe: Liste aus (Ordner, Status). Status ist "installiert", "aktuell"
+    oder eine Fehlermeldung - damit kann die App genau sagen, was passiert ist.
+    """
+    src = plugin_source(f"http://127.0.0.1:{port}", token)
+    if not src:
+        return [(app_dir() / "plugin", f"{PLUGIN_NAME} fehlt - ZIP nicht komplett entpackt?")]
+
+    results: list[tuple[Path, str]] = []
+    for folder in (folders or plugins_folders()):
+        dest = folder / PLUGIN_NAME
+        try:
+            folder.mkdir(parents=True, exist_ok=True)
+            if dest.exists():
+                if dest.read_text(encoding="utf-8", errors="replace") == src:
+                    results.append((folder, "aktuell"))
+                    continue
+            dest.write_text(src, encoding="utf-8")
+            results.append((folder, "installiert"))
+        except OSError as exc:
+            results.append((folder, f"nicht moeglich: {exc}"))
+    return results
+
+
+def plugin_status(port: int, token: str) -> tuple[bool, str]:
+    """Prueft, ob das Plugin installiert und auf dem aktuellen Stand ist."""
+    folder = plugins_folder()
+    dest = folder / PLUGIN_NAME
+    if not dest.exists():
+        return False, f"nicht installiert ({dest})"
+    src = plugin_source(f"http://127.0.0.1:{port}", token)
+    if src and dest.read_text(encoding="utf-8", errors="replace") != src:
+        return False, f"veraltet - bitte App neu starten ({dest})"
+    return True, str(dest)
 
 
 # --------------------------------------------------------------------------- #
@@ -562,7 +656,7 @@ def run_gui():
     from tkinter import messagebox, ttk
 
     cfg = load_config()
-    bridge = Bridge(cfg)
+    bridge = Bridge(cfg, token=ensure_bridge_token(cfg))
     tunnel = Tunnel()
     state = {"places": [], "running": False}
 
@@ -576,7 +670,8 @@ def run_gui():
     ttk.Label(top, text=f"Arena Studio Connector {APP_VERSION}",
               font=("Segoe UI", 16, "bold")).pack(anchor="w")
     ttk.Label(top, text="1) Username eintragen → Places laden   2) Bridge + Tunnel starten   "
-                        "3) Studio öffnen (Plugin)   4) Beim Place auf „Prompt kopieren“ klicken → an Arena AI schicken",
+                        "3) Studio öffnen (Plugin wird automatisch installiert)   4) Beim Place auf "
+                        "„Prompt kopieren“ klicken → an Arena AI schicken",
               wraplength=820).pack(anchor="w", pady=(2, 6))
 
     form = ttk.Frame(root, padding=(10, 0))
@@ -592,6 +687,7 @@ def run_gui():
 
     status_var = tk.StringVar(value="Bridge: gestoppt")
     tunnel_var = tk.StringVar(value="Tunnel: –")
+    plugin_var = tk.StringVar(value="Studio-Plugin: wird automatisch installiert …")
 
     list_frame = ttk.Frame(root, padding=10)
     list_frame.pack(fill="both", expand=True)
@@ -688,39 +784,66 @@ def run_gui():
         state["running"] = True
         btn_bridge.config(text="⏹ Stoppen")
 
-    def install_plugin():
+    def auto_install_plugin(show_dialog: bool = False) -> None:
+        """Installiert/aktualisiert das Studio-Plugin in den Plugin-Ordner."""
         port = int(cfg.get("port", DEFAULT_PORT))
-        src = plugin_source(f"http://127.0.0.1:{port}", bridge.token)
-        if not src:
-            messagebox.showerror(APP_NAME, "Die Plugin-Datei wurde nicht gefunden:\n"
-                                           f"{app_dir() / 'plugin' / PLUGIN_NAME}\n\n"
-                                           "Bitte das ZIP komplett entpacken (Rechtsklick → "
-                                           "„Alle extrahieren …“), danach die App erneut starten.")
-            return
-        folder = plugins_folder()
-        folder.mkdir(parents=True, exist_ok=True)
-        dest = folder / "ArenaBridgePlugin.lua"
-        dest.write_text(src, encoding="utf-8")
-        messagebox.showinfo(APP_NAME, f"Plugin installiert:\n{dest}\n\nBitte Roblox Studio neu starten, "
-                                       "die gewünschte Place öffnen und beim ersten Mal den "
-                                       "Zugriff auf 127.0.0.1 erlauben (Plugin-Berechtigungen).")
+        results = install_plugin(port, bridge.token)
+        lines = []
+        ok_any = False
+        for folder, status in results:
+            mark = "✅" if status in ("installiert", "aktuell") else "⚠️"
+            ok_any = ok_any or status in ("installiert", "aktuell")
+            lines.append(f"{mark} {folder}\n     → {status}")
+        report = "\n".join(lines)
+        if show_dialog:
+            if ok_any:
+                messagebox.showinfo(APP_NAME,
+                                    "Studio-Plugin:\n\n" + report +
+                                    "\n\nRoblox Studio neu starten, die gewünschte Place öffnen und "
+                                    "beim ersten Mal den Zugriff auf 127.0.0.1 erlauben "
+                                    "(Plugin-Berechtigungen).")
+            else:
+                messagebox.showerror(APP_NAME,
+                                     "Das Plugin konnte nicht installiert werden:\n\n" + report)
+        return ok_any
+
+    def install_plugin_clicked():
+        auto_install_plugin(show_dialog=True)
+
+    def auto_install_async():
+        """Beim Start automatisch - ohne Klick, ohne Dialog, ohne Warten."""
+        def work():
+            try:
+                results = install_plugin(int(cfg.get("port", DEFAULT_PORT)), bridge.token)
+                summary = ", ".join(f"{status}" for _, status in results) or "unbekannt"
+                first = results[0][0] if results else plugins_folder()
+                root.after(0, lambda: plugin_var.set(
+                    f"Studio-Plugin: {summary} ({first})"))
+            except Exception as exc:  # darf den Start nie verhindern
+                root.after(0, lambda exc=exc: plugin_var.set(
+                    f"Studio-Plugin: nicht automatisch installiert ({exc}) – "
+                    f"Button „Plugin (neu) installieren“ nutzen"))
+        threading.Thread(target=work, daemon=True).start()
 
     bar = ttk.Frame(root, padding=10)
     bar.pack(fill="x")
     ttk.Button(bar, text="Places laden", command=load_places).pack(side="left")
     btn_bridge = ttk.Button(bar, text="▶ Bridge + Tunnel starten", command=toggle_bridge)
     btn_bridge.pack(side="left", padx=8)
-    ttk.Button(bar, text="Studio-Plugin installieren", command=install_plugin).pack(side="left")
+    ttk.Button(bar, text="Plugin (neu) installieren",
+               command=install_plugin_clicked).pack(side="left")
     ttk.Button(bar, text="App-Ordner öffnen",
                command=lambda: os.startfile(app_dir()) if os.name == "nt" else subprocess.Popen(["xdg-open", str(app_dir())])).pack(side="left", padx=8)
 
     ttk.Label(root, textvariable=status_var, padding=(10, 2)).pack(fill="x")
     ttk.Label(root, textvariable=tunnel_var, padding=(10, 0)).pack(fill="x")
+    ttk.Label(root, textvariable=plugin_var, padding=(10, 0), foreground="#1a6").pack(fill="x")
     ttk.Label(root, text="⚠️ Token & Tunnel-URL nur an Arena AI geben, nirgends öffentlich posten. "
                          "Der Roblox API-Key bleibt immer nur lokal auf diesem PC.",
               foreground="#a33", padding=(10, 4)).pack(fill="x")
 
     render_places()
+    auto_install_async()          # Plugin kommt ohne Klick in den Plugin-Ordner
     root.mainloop()
 
 
@@ -739,6 +862,12 @@ def main() -> int:
     if any(a in ("--check", "/check") for a in args):
         return run_check()
 
+    if any(a in ("--install-plugin", "/install-plugin", "--installplugin") for a in args):
+        return run_install_plugin()
+
+    if any(a in ("--new-token", "/new-token", "--newtoken") for a in args):
+        return run_install_plugin(rotate=True)
+
     if any(a in ("--headless", "/headless") for a in args):
         return run_headless()
 
@@ -749,10 +878,48 @@ def main() -> int:
     return 0
 
 
+def run_install_plugin(rotate: bool = False) -> int:
+    """Installiert/aktualisiert das Studio-Plugin - ohne GUI.
+
+    Mit rotate=True wird vorher ein neuer Bridge-Token erzeugt (z. B. wenn der
+    alte Token versehentlich weitergegeben wurde).
+    """
+    cfg = load_config()
+    port = int(cfg.get("port", DEFAULT_PORT))
+    print(f"{APP_NAME} {APP_VERSION} - Studio-Plugin installieren")
+    print("=" * 66)
+    if rotate:
+        cfg["bridge_token"] = ""
+        save_config(cfg)
+        print("[i]  Neuer Bridge-Token wird erzeugt (der alte wird ungültig).")
+
+    token = ensure_bridge_token(cfg)
+    print(f"[i]  Bridge-Adresse im Plugin: http://127.0.0.1:{port}")
+    print(f"[i]  Plugin-Vorlage: {plugin_template_path() or 'nicht gefunden'}")
+    print("-" * 66)
+
+    results = install_plugin(port, token)
+    ok = False
+    for folder, status in results:
+        success = status in ("installiert", "aktuell")
+        ok = ok or success
+        print(f"[{'OK' if success else 'X'}]  {folder}\n     -> {status}")
+
+    print("-" * 66)
+    if not ok:
+        print("Das Plugin konnte nicht installiert werden. Ist Roblox Studio")
+        print("installiert? Alternativ den Ordner per ARENA_PLUGIN_DIR setzen.")
+        return 1
+    print("Fertig. Roblox Studio neu starten, die gewuenschte Place oeffnen und")
+    print("beim ersten Mal den Zugriff auf 127.0.0.1 erlauben (Plugin-Dialog).")
+    print("Der Plugin-Button heisst 'ArenaBridge'.")
+    return 0
+
+
 def run_headless() -> int:
     """Nur Bridge + Cloudflare-Tunnel, ohne Fenster (zum Testen / für Server)."""
     cfg = load_config()
-    bridge = Bridge(cfg)
+    bridge = Bridge(cfg, token=ensure_bridge_token(cfg))
     port = int(cfg.get("port", DEFAULT_PORT))
     try:
         bridge.start(port)
@@ -760,6 +927,10 @@ def run_headless() -> int:
         print(f"[X] Port {port} ist belegt ({exc}). Bitte in config.json einen "
               f"anderen Port eintragen.", flush=True)
         return 1
+    # Plugin ebenfalls automatisch installieren/aktualisieren
+    for folder, status in install_plugin(port, bridge.token):
+        print(f"[{'OK' if status in ('installiert', 'aktuell') else '!'}] "
+              f"Studio-Plugin {status}: {folder}", flush=True)
     print(f"[OK] Bridge: http://127.0.0.1:{port}", flush=True)
     print(f"TOKEN={bridge.token}", flush=True)
     Tunnel().start(port, lambda u: print(f"Tunnel: {u}\nTOKEN={bridge.token}", flush=True),
@@ -845,13 +1016,16 @@ def run_check() -> int:
         print("[i]  cloudflared fehlt noch - die App laedt es beim ersten Start")
         print("     automatisch von GitHub herunter")
 
-    # 8) Studio-Plugin-Ordner
-    folder = plugins_folder()
-    print(f"[i]  Roblox-Plugin-Ordner: {folder}")
-    if (folder / PLUGIN_NAME).exists():
-        print("[OK] ArenaBridgePlugin.lua ist in Roblox Studio installiert")
+    # 8) Studio-Plugin-Ordner + automatische Installation
+    for folder in plugins_folders():
+        print(f"[i]  Roblox-Plugin-Ordner: {folder}")
+    installed, detail = plugin_status(port, ensure_bridge_token(cfg))
+    if installed:
+        print(f"[OK] Studio-Plugin ist installiert und aktuell:\n     {detail}")
     else:
-        print("[i]  Plugin noch nicht installiert - in der App 'Studio-Plugin installieren' klicken")
+        print(f"[i]  Studio-Plugin {detail}")
+        print("     Wird beim naechsten App-Start automatisch installiert - oder jetzt:")
+        print("     ArenaStudioConnector.bat /plugin")
 
     print("=" * 66)
     if problems:

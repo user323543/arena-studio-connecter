@@ -97,6 +97,39 @@ jobs:
           }
           if ($fehler.Count -gt 0) { throw "Starter-Test fehlgeschlagen bei: $($fehler -join ', ')" }
 
+      - name: "Studio-Plugin landet automatisch im Roblox-Plugin-Ordner (/plugin)"
+        shell: pwsh
+        run: |
+          # Auf dem Runner ist Roblox nicht installiert - der Starter muss den
+          # Plugin-Ordner trotzdem anlegen und das Plugin hineinschreiben.
+          $pluginDir = Join-Path $env:LOCALAPPDATA "Roblox\Plugins"
+          if (Test-Path $pluginDir) { Remove-Item $pluginDir -Recurse -Force }
+
+          $out = cmd /c "ArenaStudioConnector.bat /plugin < nul" 2>&1 | Out-String
+          Write-Host $out
+          $ziel = Join-Path $pluginDir "ArenaBridgePlugin.lua"
+          if (-not (Test-Path $ziel)) { throw "Plugin wurde nicht installiert: $ziel fehlt" }
+          $lua = Get-Content $ziel -Raw
+          if ($lua -match '__BRIDGE_TOKEN__|__BRIDGE_URL__') { throw "Platzhalter nicht ersetzt" }
+          if ($lua -notmatch 'http://127\.0\.0\.1:8765') { throw "Bridge-URL fehlt im Plugin" }
+          $token = (Get-Content "config.json" -Raw | ConvertFrom-Json).bridge_token
+          if ($lua -notmatch [regex]::Escape($token)) { throw "Token aus config.json fehlt im Plugin" }
+          Write-Host "OK: Plugin in $ziel installiert (Token gesetzt)"
+
+          # Zweiter Lauf darf nichts neu schreiben und neuen Token erst auf Wunsch
+          $vorher = (Get-Item $ziel).LastWriteTimeUtc
+          $zweit = cmd /c "ArenaStudioConnector.bat /plugin < nul" 2>&1 | Out-String
+          if ($zweit -notmatch 'aktuell') { throw "Zweiter Lauf hat nicht 'aktuell' gemeldet" }
+          if ((Get-Item $ziel).LastWriteTimeUtc -ne $vorher) { throw "Datei unnoetig neu geschrieben" }
+
+          $neu = cmd /c "ArenaStudioConnector.bat /newtoken < nul" 2>&1 | Out-String
+          $neuerToken = (Get-Content "config.json" -Raw | ConvertFrom-Json).bridge_token
+          if ($neuerToken -eq $token) { throw "/newtoken hat den Token nicht erneuert" }
+          if ((Get-Content $ziel -Raw) -notmatch [regex]::Escape($neuerToken)) {
+            throw "Plugin wurde nach /newtoken nicht aktualisiert"
+          }
+          Write-Host "OK: /newtoken rotiert und aktualisiert das Plugin"
+
       - name: Bridge startet ohne Fenster und antwortet
         shell: pwsh
         run: |

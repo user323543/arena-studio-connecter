@@ -4,7 +4,10 @@ Diese Tests laufen ueberall (auch ohne Windows), pruefen aber genau die Dinge,
 die unter Windows sonst still kaputtgehen: Zeilenenden (CRLF), ASCII, Labels,
 goto-Ziele, Klammer-Bloecke und der Inhalt des Release-ZIPs.
 """
+import json
+import os
 import re
+from unittest import mock
 import subprocess
 import sys
 import tempfile
@@ -16,6 +19,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 import build_zip  # noqa: E402
+import arena_studio_connector as arena  # noqa: E402
 from arena_studio_connector import APP_VERSION  # noqa: E402
 
 LAUNCHER = "ArenaStudioConnector.bat"
@@ -132,6 +136,91 @@ class PaketTest(unittest.TestCase):
             with self.subTest(workflow=wf.name):
                 self.assertNotIn("pyinstaller", text)
         self.assertTrue((ROOT / "build_zip.py").exists())
+
+
+class PluginInstallationTest(unittest.TestCase):
+    """Das Studio-Plugin muss automatisch (ohne Klick) installiert werden."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        (self.root / "plugin").mkdir()
+        (self.root / "plugin" / "ArenaBridgePlugin.lua").write_text(
+            (ROOT / "plugin" / "ArenaBridgePlugin.lua").read_text(encoding="utf-8"),
+            encoding="utf-8")
+        self.plugins = self.root / "plugins"
+        self.env = {
+            **os.environ,
+            "ARENA_APP_DIR": str(self.root),
+            "ARENA_PLUGIN_DIR": str(self.plugins),
+        }
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _run(self, *args):
+        return subprocess.run([sys.executable, str(ROOT / "arena_studio_connector.py"), *args],
+                              capture_output=True, text=True, env=self.env, cwd=str(self.root),
+                              timeout=120)
+
+    def test_token_wird_lokal_gemerkt_und_bleibt_stabil(self):
+        cfg_path = self.root / "config.json"
+        self.assertFalse(cfg_path.exists())
+        with mock.patch.dict(os.environ, self.env):
+            first = arena.ensure_bridge_token({})
+            saved = json.loads(cfg_path.read_text(encoding="utf-8"))
+            self.assertEqual(saved["bridge_token"], first)
+            self.assertNotIn("roblox_api_key", saved)
+            # zweiter Start: gleicher Token, sonst muesste das Plugin neu installiert werden
+            self.assertEqual(arena.ensure_bridge_token(arena.load_config()), first)
+            # eine zweite App-Instanz darf den Token nicht neu wuerfeln
+            self.assertEqual(arena.ensure_bridge_token({}), first)
+
+    def test_plugin_wird_in_den_plugin_ordner_geschrieben(self):
+        result = self._run("--install-plugin")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        dest = self.plugins / "ArenaBridgePlugin.lua"
+        self.assertTrue(dest.exists(), "Plugin wurde nicht installiert")
+        source = dest.read_text(encoding="utf-8")
+        cfg = json.loads((self.root / "config.json").read_text(encoding="utf-8"))
+        self.assertNotIn("__BRIDGE_TOKEN__", source, "Token-Platzhalter nicht ersetzt")
+        self.assertNotIn("__BRIDGE_URL__", source, "URL-Platzhalter nicht ersetzt")
+        self.assertIn(cfg["bridge_token"], source)
+        self.assertIn("http://127.0.0.1:8765", source)
+
+    def test_zweiter_lauf_laesst_die_datei_unveraendert(self):
+        self._run("--install-plugin")
+        dest = self.plugins / "ArenaBridgePlugin.lua"
+        stamp = dest.stat().st_mtime_ns
+        result = self._run("--install-plugin")
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("aktuell", result.stdout)
+        self.assertEqual(dest.stat().st_mtime_ns, stamp, "Datei wurde unnoetig neu geschrieben")
+
+    def test_new_token_rotiert_und_schreibt_das_plugin_neu(self):
+        self._run("--install-plugin")
+        alt = json.loads((self.root / "config.json").read_text(encoding="utf-8"))["bridge_token"]
+        result = self._run("--new-token")
+        self.assertEqual(result.returncode, 0, result.stdout)
+        neu = json.loads((self.root / "config.json").read_text(encoding="utf-8"))["bridge_token"]
+        self.assertNotEqual(alt, neu, "Token wurde nicht rotiert")
+        source = (self.plugins / "ArenaBridgePlugin.lua").read_text(encoding="utf-8")
+        self.assertIn(neu, source)
+        self.assertNotIn(alt, source)
+
+    def test_ohne_plugin_vorlage_kommt_klare_meldung(self):
+        # App ohne plugin/-Ordner (kaputt entpacktes ZIP): darf nicht abstuerzen,
+        # sondern muss sagen, was los ist.
+        (self.root / "plugin" / "ArenaBridgePlugin.lua").unlink()
+        app_copy = self.root / "arena_studio_connector.py"
+        app_copy.write_text((ROOT / "arena_studio_connector.py").read_text(encoding="utf-8"),
+                            encoding="utf-8")
+        result = subprocess.run([sys.executable, str(app_copy), "--install-plugin"],
+                                capture_output=True, text=True, env=self.env,
+                                cwd=str(self.root), timeout=120)
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("ZIP", result.stdout)
+        self.assertFalse((self.plugins / "ArenaBridgePlugin.lua").exists())
 
 
 class CliTest(unittest.TestCase):
