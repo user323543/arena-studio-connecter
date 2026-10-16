@@ -350,10 +350,12 @@ pause
 goto end_ok
 
 :show_version
-rem APP_VERSION aus der Python-Datei lesen. "delims== " trennt am Gleichheits-
-rem zeichen und am Leerzeichen, %%~V entfernt die Anfuehrungszeichen.
+rem Version kommt aus der Datei VERSION (liegt im ZIP). Bewusst kein Parsen der
+rem Python-Datei: in for-/delims-Optionen sind Anfuehrungszeichen und
+rem Leerzeichen zu fehleranfaellig. build_zip.py prueft, dass VERSION und
+rem APP_VERSION in arena_studio_connector.py identisch sind.
 set "VER="
-for /f "tokens=2 delims== " %%V in ('findstr /b /c:"APP_VERSION" "%~dp0%APP%" 2^>nul') do set "VER=%%~V"
+if exist "%~dp0VERSION" for /f "delims=" %%V in ('type "%~dp0VERSION"') do if not defined VER set "VER=%%V"
 if not defined VER set "VER=unbekannt"
 echo.
 echo Arena Studio Connector !VER!

@@ -41,6 +41,7 @@ DATEIEN IN DIESEM ORDNER
    ArenaStudioConnector.bat          Der Starter (hier doppelklicken!)
    ArenaStudioConnector-Konsole.bat  Gleiches, aber mit Meldungen
    arena_studio_connector.py         Die App selbst (GUI + Bridge + Tunnel)
+   VERSION                           Version der App (fuer /version)
    plugin\ArenaBridgePlugin.lua      Roblox-Studio-Plugin (wird installiert)
    .env.example                      Tutorial fuer den Roblox API-Key
    config.example.json               Vorlage fuer config.json (Username, Port)

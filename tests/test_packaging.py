@@ -61,12 +61,12 @@ class StarterTest(unittest.TestCase):
         self.assertNotIn("dist\\", low)
         self.assertIn("--headless", low)  # laeuft auch ohne Fenster
 
-    def test_version_wird_robust_gelesen(self):
-        # "%%~V" entfernt die Anfuehrungszeichen aus der APP_VERSION-Zeile;
-        # die frueher genutzte !VER:"=!-Ersetzung war zu fehleranfaellig.
-        self.assertIn('set "VER=%%~V"', self.text)
-        self.assertNotIn('!VER:"=!', self.text)
-        self.assertIn('delims== ', self.text)
+    def test_version_wird_aus_version_datei_gelesen(self):
+        # Bewusst kein Parsen der Python-Datei in for-Optionen (Anfuehrungszeichen
+        # und Leerzeichen dort sind zu fehleranfaellig) - deshalb VERSION-Datei.
+        self.assertIn('type "%~dp0VERSION"', self.text)
+        self.assertNotIn("!VER:", self.text)
+        self.assertNotIn("findstr /b /c:\"APP_VERSION\"", self.text)
 
     def test_start_ohne_python_wird_abgefangen(self):
         for needle in ("kein Python 3.9", "python.org/downloads/windows", "choice /c JN"):
@@ -80,6 +80,8 @@ class StarterTest(unittest.TestCase):
 class PaketTest(unittest.TestCase):
     def test_version_stimmt_mit_app_ueberein(self):
         self.assertEqual(build_zip.app_version(), APP_VERSION)
+        self.assertEqual((ROOT / "VERSION").read_text(encoding="utf-8").strip(), APP_VERSION)
+        self.assertEqual(build_zip.check_version_file(), [])
 
     def test_zip_enthaelt_alle_dateien(self):
         with tempfile.TemporaryDirectory() as tmp:

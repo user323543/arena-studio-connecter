@@ -31,6 +31,7 @@ PAYLOAD: list[tuple[str, str]] = [
     ("ArenaStudioConnector.bat", "ArenaStudioConnector.bat"),
     ("ArenaStudioConnector-Konsole.bat", "ArenaStudioConnector-Konsole.bat"),
     ("arena_studio_connector.py", "arena_studio_connector.py"),
+    ("VERSION", "VERSION"),
     ("plugin/ArenaBridgePlugin.lua", "plugin/ArenaBridgePlugin.lua"),
     (".env.example", ".env.example"),
     ("config.example.json", "config.example.json"),
@@ -50,6 +51,22 @@ def app_version() -> str:
     if not match:
         raise SystemExit("APP_VERSION wurde in arena_studio_connector.py nicht gefunden.")
     return match.group(1)
+
+
+def check_version_file() -> list[str]:
+    """VERSION-Datei und APP_VERSION in der App muessen identisch sein.
+
+    Der .bat-Starter zeigt /version direkt aus der VERSION-Datei an - wenn beide
+    auseinanderlaufen, wuerde die App etwas Falsches behaupten.
+    """
+    path = ROOT / "VERSION"
+    if not path.exists():
+        return ["VERSION fehlt (der .bat-Starter liest /version daraus)"]
+    file_version = path.read_text(encoding="utf-8").strip()
+    if file_version != app_version():
+        return [f"VERSION ({file_version}) passt nicht zu APP_VERSION ({app_version()}) "
+                f"in arena_studio_connector.py"]
+    return []
 
 
 def check_zip_names() -> list[str]:
@@ -188,6 +205,10 @@ def build(output: Path) -> Path:
     if structure:
         raise SystemExit("Abbruch - die .bat-Dateien haben Fehler:\n  "
                          + "\n  ".join(structure))
+    version_problems = check_version_file()
+    if version_problems:
+        raise SystemExit("Abbruch - Versionsangaben pruefen:\n  "
+                         + "\n  ".join(version_problems))
 
     output.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as zf:

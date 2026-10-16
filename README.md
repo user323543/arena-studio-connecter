@@ -174,6 +174,7 @@ kleine GUI und nicht nur einen Copy-Befehl.
 | `ArenaStudioConnector.bat` | **Starter** – doppelklicken (Python-Suche, Prüfungen, App-Start) |
 | `ArenaStudioConnector-Konsole.bat` | gleicher Start, aber mit Konsolenfenster (Diagnose) |
 | `arena_studio_connector.py` | Komplette App (GUI + Bridge + Tunnel + Prompt-Generator) |
+| `VERSION` | Version für `/version` – `build_zip.py` prüft, dass sie zu `APP_VERSION` passt |
 | `plugin/ArenaBridgePlugin.lua` | Roblox-Studio-Plugin (wird von der App installiert) |
 | `.env.example` | **Tutorial + Rechte-Liste für den Roblox API-Key** – als `.env` kopieren |
 | `config.example.json` | Vorlage für `config.json` (Username, Port) |
