@@ -13,17 +13,34 @@ deinen PC je verlässt.**
 > Die EXE ersetzt die `.bat` komplett: Places-Liste + „Prompt kopieren"-Button
 > direkt daneben – so weiß Arena immer exakt, welche Place gemeint ist.
 
+<p align="center">
+  <a href="https://github.com/user323543/arena-studio-connecter/releases/latest/download/ArenaStudioConnector.exe"><sub>⬇️&nbsp;ArenaStudioConnector.exe herunterladen&nbsp;·&nbsp;direkt &amp; schnell, ohne Zip</sub></a>
+</p>
+
 ---
 
 ## 🚀 Schnellstart
 
 ### 1. EXE herunterladen (kein Python nötig)
-GitHub → **Actions** → letzter Lauf von „Build Windows EXE" → Artifact
-**ArenaStudioConnector-exe** herunterladen (enthält `ArenaStudioConnector.exe`).
-Oder bei einem Release direkt die EXE laden.
+**[⬇️ ArenaStudioConnector.exe herunterladen](https://github.com/user323543/arena-studio-connecter/releases/latest/download/ArenaStudioConnector.exe)**
+→ immer die neueste Version als **Release-Datei direkt über das GitHub-CDN**:
+Der Download startet sofort, **ohne Zip-Umweg**, und kann unterbrochen/fortgesetzt
+werden. (Die Datei ist ~12 MB, damit ist sie in wenigen Sekunden da.)
 
-> Selbst bauen stattdessen: Python 3.11+ installieren, dann `build_exe.bat`
-> doppelklicken → EXE liegt in `dist\`.
+> 💡 Bei einem **privaten** Repo funktioniert der Link für alle, die bei GitHub
+> eingeloggt und zum Repo berechtigt sind (kein Extra-Klick, kein „Preparing
+> download" wie beim Actions-Artefakt). Soll der Link für alle gelten, das Repo
+> auf **Public** stellen.
+
+> **Noch schneller & kleiner:** Actions → „Build Windows EXE" → **Run workflow**
+> → Option `use_upx` anhaken. Dann ist die EXE ca. **halb so groß** (schnellerer
+> Download). Hinweis: UPX-gepackte Programme lösen bei manchen Virenscannern
+> Fehlalarme aus – deshalb ist die Option standardmäßig aus.
+>
+> **Fallback** (falls der Link mal nicht geht): GitHub → **Actions** → letzter
+> Lauf von „Build Windows EXE" → Artifact **ArenaStudioConnector-exe**.
+> Oder selbst bauen: Python 3.11+ installieren, `build_exe.bat` doppelklicken
+> → EXE liegt in `dist\`.
 
 ### 2. (Optional, nur für Dashboard-Aktionen) Roblox API-Key eintragen
 Für reines Arbeiten **in Studio** brauchst du **keinen** Key.
@@ -109,8 +126,9 @@ so zu tun, als hätte es geklappt.
 | `config.example.json` | Vorlage für `config.json` (Username, Port) |
 | `prompt_beispiel.txt` | So sieht der kopierte Prompt aus |
 | `build_exe.bat` + `ArenaStudioConnector.spec` | EXE lokal bauen |
-| `.github/workflows/build-exe.yml` | EXE automatisch auf GitHub bauen (Actions/Release) |
+| `.github/workflows/build-exe.yml` | Baut die EXE automatisch und lädt sie als Artifact **+** als Release-Datei `latest` hoch (schneller Direkt-Download-Link) |
 | `tests/test_bridge.py` | Tests: Auth, Kommando-Roundtrip, Prompt-Inhalt |
+| `tests/test_download_link.py` | Test: Direkt-Download-Link (README + Workflow) bleibt bestehen |
 
 ## 🧪 Entwickeln / Testen
 ```powershell
