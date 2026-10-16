@@ -76,6 +76,21 @@ jobs:
           if ($kurz.Length -gt 900) { $kurz = $kurz.Substring(0, 900) }
           Write-Host "::error title=Diagnose::$kurz"
 
+          # Echten Starter patchen: Debug-Ausgaben rund um :show_version einsetzen
+          $src = Get-Content ArenaStudioConnector.bat -Raw
+          $needle = 'if exist "%~dp0VERSION" for /f "delims=" %%V in (''type "%~dp0VERSION"'') do if not defined VER set "VER=%%V"'
+          $dbg = @(
+            'echo DBG_A=[%~dp0VERSION]',
+            'if exist "%~dp0VERSION" (echo DBG_B=JA) else (echo DBG_B=NEIN)',
+            'if defined VER (echo DBG_C=DEFINED) else (echo DBG_C=UNDEFINED)'
+          ) -join "`r`n"
+          $patched = $src.Replace($needle, $dbg + "`r`n" + $needle + "`r`n" + 'echo DBG_D=[!VER!]')
+          $patched = $patched.Replace('echo Arena Studio Connector !VER!', 'echo DBG_E=[!VER!]')
+          Set-Content -Path probe2.bat -Value $patched -Encoding ascii -NoNewline
+          $out2 = cmd /c "probe2.bat /version < nul" 2>&1 | Out-String
+          $kurz2 = $out2 -replace "\r?\n", " | "
+          Write-Host "::error title=Diagnose2::matched=$(if ($patched -ne $src) {'JA'} else {'NEIN'}) :: $kurz2"
+
       - name: "Starter testen: /version, /help, /check (< nul verhindert Warten)"
         shell: pwsh
         run: |
