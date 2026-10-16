@@ -42,7 +42,8 @@ PAYLOAD: list[tuple[str, str]] = [
 
 # Diese .bat-Dateien werden geprueft/fixiert: die ausgelieferten plus das
 # Build-Skript selbst (auch das muss unter Windows laufen).
-BAT_FILES = sorted({src for src, _ in PAYLOAD if src.lower().endswith(".bat")} | {"build_zip.bat"})
+BAT_FILES = sorted({src for src, _ in PAYLOAD if src.lower().endswith(".bat")}
+                   | {"build_zip.bat"})
 
 
 def app_version() -> str:
@@ -192,6 +193,35 @@ def check_bat_structure() -> list[str]:
     return problems
 
 
+def check_shift_paths() -> list[str]:
+    """Nach einem "shift" zeigt %~dp0 nicht mehr auf den App-Ordner.
+
+    "shift" verschiebt auch %0 - danach waere %~dp0VERSION z. B. D:\VERSION.
+    Pfade muessen deshalb vor der Options-Schleife in Variablen stehen.
+    (Genau dieser Fehler ist in der Windows-CI aufgefallen: /version meldete
+    "unbekannt", weil %~dp0 nach dem shift auf D:\ zeigte.)
+    """
+    problems: list[str] = []
+    muster_pos = re.compile(r"%0|%~[a-zA-Z]*0", re.I)
+    for name in BAT_FILES + ["ArenaStudioConnector-Konsole.bat"]:
+        path = ROOT / name
+        if not path.exists():
+            continue
+        lines = path.read_bytes().replace(b"\r\n", b"\n").decode("ascii", "replace").split("\n")
+        erste_shift = 0
+        for no, line in enumerate(lines, 1):
+            stripped = line.strip()
+            if stripped.lower().startswith("rem") or stripped.startswith("::"):
+                continue
+            if erste_shift == 0 and re.search(r"^shift$", stripped, re.I):
+                erste_shift = no
+                continue
+            if erste_shift and muster_pos.search(line):
+                problems.append(f"{name}:{no}: %0/%~dp0 nach 'shift' in Zeile {erste_shift} "
+                                f"- Pfad vorher in eine Variable legen")
+    return problems
+
+
 def build(output: Path) -> Path:
     version = app_version()
     missing = check_zip_names()
@@ -209,6 +239,9 @@ def build(output: Path) -> Path:
     if version_problems:
         raise SystemExit("Abbruch - Versionsangaben pruefen:\n  "
                          + "\n  ".join(version_problems))
+    shift_problems = check_shift_paths()
+    if shift_problems:
+        raise SystemExit("Abbruch - %0/%~dp0 nach shift:\n  " + "\n  ".join(shift_problems))
 
     output.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as zf:

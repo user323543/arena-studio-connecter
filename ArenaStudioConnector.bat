@@ -9,10 +9,17 @@ setlocal EnableExtensions EnableDelayedExpansion
 title Arena Studio Connector >nul 2>&1
 cd /d "%~dp0"
 
+rem Wichtig: alle Pfade hier einmal festhalten. Die Options-Schleife unten
+rem benutzt "shift", und shift verschiebt AUCH %0 - danach zeigt %~dp0 nicht
+rem mehr auf diesen Ordner.
+set "APPDIR=%~dp0"
 set "APP=arena_studio_connector.py"
-set "APPPATH=%~dp0%APP%"
+set "APPPATH=%APPDIR%%APP%"
 set "PLUGIN=plugin\ArenaBridgePlugin.lua"
+set "PLUGINPATH=%APPDIR%%PLUGIN%"
 set "ERRLOG=last_error.log"
+set "ERRLOGPATH=%APPDIR%%ERRLOG%"
+set "VERSIONFILE=%APPDIR%VERSION"
 set "MODE=gui"
 set "PY_CMD="
 set "PY_ARGS="
@@ -84,8 +91,8 @@ if not exist "%APPPATH%" (
     goto fail
 )
 
-if not exist "%~dp0%PLUGIN%" (
-    echo [!] Hinweis: "%~dp0%PLUGIN%" wurde nicht gefunden.
+if not exist "%PLUGINPATH%" (
+    echo [!] Hinweis: "%PLUGINPATH%" wurde nicht gefunden.
     echo     Die App startet, aber "Studio-Plugin installieren" funktioniert
     echo     dann nicht. Meist wurde das ZIP nur teilweise entpackt.
     echo.
@@ -173,7 +180,7 @@ rem --------------------------------------------------------------------------
 rem  Standard: GUI ohne Konsolenfenster
 rem --------------------------------------------------------------------------
 set "HADERR="
-if exist "%~dp0%ERRLOG%" set "HADERR=1"
+if exist "%ERRLOGPATH%" set "HADERR=1"
 
 if not defined PYW_EXE goto run_console_note
 
@@ -184,7 +191,7 @@ echo.
 echo      Pruefe gerade, ob die App sauber laeuft ...
 timeout /t 4 /nobreak >nul 2>&1 || ping -n 5 127.0.0.1 >nul
 if defined HADERR goto all_good
-if exist "%~dp0%ERRLOG%" goto launch_failed
+if exist "%ERRLOGPATH%" goto launch_failed
 
 :all_good
 echo.
@@ -241,7 +248,7 @@ goto end_ok
 echo.
 echo [X] Die App hat sich direkt wieder beendet. Fehlerlog:
 echo ---------------------------------------------------------------------------
-type "%~dp0%ERRLOG%"
+type "%ERRLOGPATH%"
 echo ---------------------------------------------------------------------------
 echo     Meist hilft: ZIP komplett entpacken, Python neu installieren oder
 echo     ArenaStudioConnector-Konsole.bat starten.
@@ -355,7 +362,7 @@ rem Python-Datei: in for-/delims-Optionen sind Anfuehrungszeichen und
 rem Leerzeichen zu fehleranfaellig. build_zip.py prueft, dass VERSION und
 rem APP_VERSION in arena_studio_connector.py identisch sind.
 set "VER="
-if exist "%~dp0VERSION" for /f "delims=" %%V in ('type "%~dp0VERSION"') do if not defined VER set "VER=%%V"
+if exist "%VERSIONFILE%" for /f "delims=" %%V in ('type "%VERSIONFILE%"') do if not defined VER set "VER=%%V"
 if not defined VER set "VER=unbekannt"
 echo.
 echo Arena Studio Connector !VER!

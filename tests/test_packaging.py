@@ -4,6 +4,7 @@ Diese Tests laufen ueberall (auch ohne Windows), pruefen aber genau die Dinge,
 die unter Windows sonst still kaputtgehen: Zeilenenden (CRLF), ASCII, Labels,
 goto-Ziele, Klammer-Bloecke und der Inhalt des Release-ZIPs.
 """
+import re
 import subprocess
 import sys
 import tempfile
@@ -38,6 +39,22 @@ class BatDateienTest(unittest.TestCase):
     def test_bat_struktur_ist_konsistent(self):
         self.assertEqual(build_zip.check_bat_structure(), [])
         self.assertEqual(build_zip.check_line_endings(), [])
+        self.assertEqual(build_zip.check_shift_paths(), [])
+
+    def test_pfade_stehen_vor_der_options_schleife(self):
+        # Regression: "shift" verschiebt auch %0 - danach zeigte %~dp0VERSION
+        # auf D:\VERSION und /version meldete "unbekannt".
+        text = (ROOT / "ArenaStudioConnector.bat").read_text(encoding="ascii")
+        grenze = text.index(":args_done")
+        vorher, nachher = text[:grenze], text[grenze:]
+        self.assertIsNone(re.search(r"%~dp0|(?<!%)%0(?!\d)", nachher),
+                          "%~dp0/%0 nach der Options-Schleife (shift verschiebt %0)")
+        self.assertTrue('set "APPDIR=%~dp0"' in vorher)
+        for definition in ('set "APPPATH=', 'set "PLUGINPATH=', 'set "ERRLOGPATH=',
+                           'set "VERSIONFILE='):
+            self.assertTrue(definition in vorher,
+                            f"{definition}... muss vor der Options-Schleife stehen "
+                            f"(sonst zeigt %~dp0 nach dem shift woanders hin)")
 
 
 class StarterTest(unittest.TestCase):
@@ -45,7 +62,7 @@ class StarterTest(unittest.TestCase):
         self.text = (ROOT / LAUNCHER).read_text(encoding="ascii")
 
     def test_startet_die_python_app(self):
-        self.assertIn("arena_studio_connector.py", self.text)
+        self.assertIn("arena_studio_connector.py", self.text)  # noqa: SLF001
 
     def test_installiert_python_bei_bedarf(self):
         self.assertIn("winget install --id Python.Python.3.12", self.text)
@@ -64,9 +81,10 @@ class StarterTest(unittest.TestCase):
     def test_version_wird_aus_version_datei_gelesen(self):
         # Bewusst kein Parsen der Python-Datei in for-Optionen (Anfuehrungszeichen
         # und Leerzeichen dort sind zu fehleranfaellig) - deshalb VERSION-Datei.
-        self.assertIn('type "%~dp0VERSION"', self.text)
-        self.assertNotIn("!VER:", self.text)
-        self.assertNotIn("findstr /b /c:\"APP_VERSION\"", self.text)
+        self.assertTrue('set "VERSIONFILE=%APPDIR%VERSION"' in self.text)
+        self.assertTrue('type "%VERSIONFILE%"' in self.text)
+        self.assertTrue("!VER:" not in self.text)
+        self.assertTrue('findstr /b /c:"APP_VERSION"' not in self.text)
 
     def test_start_ohne_python_wird_abgefangen(self):
         for needle in ("kein Python 3.9", "python.org/downloads/windows", "choice /c JN"):

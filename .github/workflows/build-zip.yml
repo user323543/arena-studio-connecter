@@ -55,41 +55,16 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Diagnose Zeilenenden und Dateizugriff (temporaer)
+      - name: Zeilenenden der .bat pruefen (Windows-Checkout)
         shell: pwsh
-        if: always()
         run: |
-          $raw = [System.IO.File]::ReadAllText("ArenaStudioConnector.bat")
-          $crlf = ([regex]::Matches($raw, "`r`n")).Count
-          $nurLf = ([regex]::Matches($raw, "(?<!`r)`n")).Count
-          $probe = @(
-            '@echo off',
-            'echo dp0=[%~dp0]',
-            'if exist "%~dp0VERSION" (echo EXIST_DP0=JA) else (echo EXIST_DP0=NEIN)',
-            'if exist VERSION (echo EXIST_CWD=JA) else (echo EXIST_CWD=NEIN)',
-            'for /f "delims=" %%V in (''type "%~dp0VERSION"'') do echo READ_DP0=[%%V]',
-            'for /f "delims=" %%V in (''type VERSION'') do echo READ_CWD=[%%V]'
-          )
-          Set-Content -Path probe.bat -Value $probe -Encoding ascii
-          $out = cmd /c probe.bat 2>&1 | Out-String
-          $kurz = "CRLF=$crlf LF-only=$nurLf :: " + ($out -replace "\r?\n", " | ")
-          if ($kurz.Length -gt 900) { $kurz = $kurz.Substring(0, 900) }
-          Write-Host "::error title=Diagnose::$kurz"
-
-          # Echten Starter patchen: Debug-Ausgaben rund um :show_version einsetzen
-          $src = Get-Content ArenaStudioConnector.bat -Raw
-          $needle = 'if exist "%~dp0VERSION" for /f "delims=" %%V in (''type "%~dp0VERSION"'') do if not defined VER set "VER=%%V"'
-          $dbg = @(
-            'echo DBG_A=[%~dp0VERSION]',
-            'if exist "%~dp0VERSION" (echo DBG_B=JA) else (echo DBG_B=NEIN)',
-            'if defined VER (echo DBG_C=DEFINED) else (echo DBG_C=UNDEFINED)'
-          ) -join "`r`n"
-          $patched = $src.Replace($needle, $dbg + "`r`n" + $needle + "`r`n" + 'echo DBG_D=[!VER!]')
-          $patched = $patched.Replace('echo Arena Studio Connector !VER!', 'echo DBG_E=[!VER!]')
-          Set-Content -Path probe2.bat -Value $patched -Encoding ascii -NoNewline
-          $out2 = cmd /c "probe2.bat /version < nul" 2>&1 | Out-String
-          $kurz2 = $out2 -replace "\r?\n", " | "
-          Write-Host "::error title=Diagnose2::matched=$(if ($patched -ne $src) {'JA'} else {'NEIN'}) :: $kurz2"
+          # .gitattributes erzwingt CRLF - hier auf dem Windows-Checkout belegt.
+          foreach ($f in @('ArenaStudioConnector.bat', 'ArenaStudioConnector-Konsole.bat', 'build_zip.bat')) {
+            $text = [System.IO.File]::ReadAllText($f)
+            $nurLf = ([regex]::Matches($text, "(?<!`r)`n")).Count
+            if ($nurLf -gt 0) { throw "$f hat $nurLf LF-only-Zeilen - cmd braucht CRLF" }
+            Write-Host "$f : CRLF ok"
+          }
 
       - name: "Starter testen: /version, /help, /check (< nul verhindert Warten)"
         shell: pwsh
