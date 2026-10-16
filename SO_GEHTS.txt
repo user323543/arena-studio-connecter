@@ -1,0 +1,53 @@
+===============================================================================
+ Arena Studio Connector - Schnellstart
+ Verbindet Roblox Studio mit Arena AI
+===============================================================================
+
+1. ENTPACKEN (wichtig!)
+   Rechtsklick auf die ZIP-Datei -> "Alle extrahieren ..."
+   Bitte NICHT die .bat direkt aus dem ZIP-Fenster starten - dann fehlen
+   Dateien wie plugin\ArenaBridgePlugin.lua.
+
+2. STARTEN
+   Doppelklick auf:  ArenaStudioConnector.bat
+   - Ist Python 3 noch nicht installiert, fragt die Datei, ob sie es
+     automatisch installieren darf (winget) - oder oeffnet die Download-Seite.
+   - Die App oeffnet sich als Fenster (ohne Konsolenfenster).
+
+3. IN DER APP
+   a) Roblox-Username eintragen -> "Places laden"
+   b) "Bridge + Tunnel starten" -> warten, bis die Tunnel-URL erscheint
+   c) "Studio-Plugin installieren" -> Roblox Studio neu starten, die
+      gewuenschte Place oeffnen, im Toolbar-Button "ArenaBridge" klicken und
+      beim ersten Mal den Zugriff auf 127.0.0.1 erlauben
+   d) Beim gewuenschten Spiel "Prompt kopieren" -> bei Arena AI einfuegen
+
+4. OPTIONAL: Creator-Dashboard-Aktionen (GamePaesse, Dev-Produkte, Badges ...)
+   Dafuer braucht Arena einen Roblox Open-Cloud API-Key. Der Key bleibt IMMER
+   auf deinem PC - er wird nie in den Prompt kopiert und nie verschickt.
+   - .env.example kopieren und die Kopie exakt ".env" nennen
+   - Anleitung + benoetigte Rechte stehen ausfuehrlich in der .env.example
+
+PROBLEME?
+   ArenaStudioConnector-Konsole.bat  -> gleicher Start, aber mit allen Meldungen
+   ArenaStudioConnector.bat /check   -> Systemcheck: Python, tkinter, Plugin,
+                                        Port, cloudflared, Plugin-Ordner
+   ArenaStudioConnector.bat /unblock -> Windows-Sperre "Datei aus dem Internet"
+                                        entfernen, falls Windows blockt
+   last_error.log                    -> entsteht automatisch, wenn die App beim
+                                        Start abstuerzt (mit Fehlerdetails)
+
+DATEIEN IN DIESEM ORDNER
+   ArenaStudioConnector.bat          Der Starter (hier doppelklicken!)
+   ArenaStudioConnector-Konsole.bat  Gleiches, aber mit Meldungen
+   arena_studio_connector.py         Die App selbst (GUI + Bridge + Tunnel)
+   plugin\ArenaBridgePlugin.lua      Roblox-Studio-Plugin (wird installiert)
+   .env.example                      Tutorial fuer den Roblox API-Key
+   config.example.json               Vorlage fuer config.json (Username, Port)
+   prompt_beispiel.txt               So sieht der kopierte Prompt aus
+   README.md                         Alles ausfuehrlich erklaert
+
+SICHERHEIT
+   Bridge-Token und Tunnel-URL gelten nur, solange die App laeuft.
+   Prompt/Token nur an Arena AI geben - nicht oeffentlich posten.
+   Der Roblox API-Key verlaesst deinen PC nie (liegt in .env / config.json).

@@ -1,2 +1,6 @@
-# Laufzeit: nur Python-Standardbibliothek – keine Abhängigkeiten nötig.
-# Zum Bauen der EXE:  pip install pyinstaller   (macht build_exe.bat automatisch)
+# Laufzeit: nur Python-Standardbibliothek - keine Abhaengigkeiten noetig.
+# Empfohlen: Python 3.9+ von https://www.python.org/downloads/windows/
+#   (bei der Installation "Add python.exe to PATH" und "tcl/tk and IDLE" ankreuzen)
+#
+# Zum Paketieren: kein PyInstaller! Es wird ein ZIP gepackt:
+#   python build_zip.py     (bzw. build_zip.bat unter Windows)

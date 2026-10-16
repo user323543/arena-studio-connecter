@@ -2,11 +2,19 @@
 .env
 config.json
 
+# Laufzeit-/Diagnose-Dateien der App
+last_error.log
+
 # Build
 dist/
 build/
 *.spec.bak
-cloudflared.exe
-cloudflared
 __pycache__/
 *.pyc
+
+# Von der App selbst geladen (Tunnel-Binary, liegt lokal neben der .bat)
+cloudflared.exe
+cloudflared
+
+# Lokale, weitergebbare ZIP-Kopie (Build-Output siehe dist/)
+release/

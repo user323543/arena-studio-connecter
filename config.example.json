@@ -1,5 +1,5 @@
 {
-  "_hinweis": "Kopiere diese Datei als config.json neben die EXE. Der API-Key gehoert NICHT hier rein, sondern in die .env (siehe .env.example mit Tutorial + benoetigten Rechten).",
+  "_hinweis": "Kopiere diese Datei als config.json neben die .bat (ArenaStudioConnector.bat). Der API-Key gehoert NICHT hier rein, sondern in die .env (siehe .env.example mit Tutorial + benoetigten Rechten).",
   "roblox_username": "DeinRobloxName",
   "port": 8765
 }

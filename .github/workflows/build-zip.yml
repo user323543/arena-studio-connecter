@@ -1,0 +1,96 @@
+name: Build ZIP
+
+# Baut das Release-ZIP (keine EXE mehr!) und testet den .bat-Starter auf Windows.
+# Download: Repo -> Actions -> letzter Lauf -> Artifact "ArenaStudioConnector-zip"
+# Oder: ein Tag wie v1.1.0 pushen -> ZIP + Pruefsumme landen am GitHub Release.
+
+on:
+  push:
+    branches: [main, "arena/**"]
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Tests + ZIP (Linux)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Tests
+        run: python -m unittest discover -s tests -v
+
+      - name: ZIP bauen
+        run: python build_zip.py
+
+      - name: Inhalt des ZIPs anzeigen
+        run: python -m zipfile -l dist/ArenaStudioConnector-*.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ArenaStudioConnector-zip
+          path: |
+            dist/*.zip
+            dist/SHA256SUMS.txt
+
+      - name: An Release haengen (nur bei Tag)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.zip
+            dist/SHA256SUMS.txt
+
+  windows:
+    name: .bat-Starter auf Windows testen
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: "Starter: Version und Hilfe (< nul verhindert Warten auf Eingabe)"
+        shell: cmd
+        run: |
+          call ArenaStudioConnector.bat /version < nul
+          if errorlevel 1 exit /b 1
+          call ArenaStudioConnector.bat /help < nul
+          if errorlevel 1 exit /b 1
+
+      - name: Systemcheck (/check) laeuft durch
+        shell: pwsh
+        run: |
+          $out = cmd /c "ArenaStudioConnector.bat /check < nul" 2>&1 | Out-String
+          Write-Host $out
+          foreach ($needle in @('[OK] Python', 'App-Ordner', 'Plugin gefunden', 'Port')) {
+            if ($out -notmatch [regex]::Escape($needle)) { throw "Systemcheck unvollstaendig: $needle fehlt" }
+          }
+
+      - name: Bridge startet ohne Fenster und antwortet
+        shell: pwsh
+        continue-on-error: true   # Netz/cloudflared darf den Build nicht kippen
+        run: |
+          $log = Join-Path $env:TEMP "connector-headless.log"
+          $proc = Start-Process python -ArgumentList 'arena_studio_connector.py --headless' `
+                    -PassThru -NoNewWindow -RedirectStandardOutput $log
+          $ready = $false
+          foreach ($i in 1..25) {
+            Start-Sleep -Seconds 1
+            if ((Test-Path $log) -and (Select-String -Path $log -Pattern 'Bridge: http://127\.0\.0\.1:8765' -Quiet)) { $ready = $true; break }
+          }
+          if (Test-Path $log) { Get-Content $log }
+          if ($ready) {
+            $token = (Select-String -Path $log -Pattern 'TOKEN=(\S+)').Matches[0].Groups[1].Value
+            $status = Invoke-RestMethod -Uri "http://127.0.0.1:8765/api/status" `
+                        -Headers @{ Authorization = "Bearer $token" }
+            Write-Host "Bridge-Status: $($status.bridge), studio_connected=$($status.studio_connected)"
+          } else {
+            Write-Host "::warning::Headless-Bridge wurde nicht erkannt"
+          }
+          if (-not $proc.HasExited) { $proc.Kill() }

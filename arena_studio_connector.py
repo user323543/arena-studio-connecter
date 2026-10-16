@@ -2,7 +2,7 @@
 """
 Arena Studio Connector
 ======================
-Lokale Windows-App (auch als EXE baubar), die
+Lokale Windows-App (als .bat + ZIP verteilt - kein Build, keine EXE noetig),
   1. eine lokale Bridge (HTTP) startet,
   2. diese per Cloudflare-Tunnel (trycloudflare.com) öffentlich erreichbar macht,
   3. deine Roblox-Places auflistet und pro Place einen fertigen Prompt kopiert,
@@ -12,6 +12,12 @@ Lokale Windows-App (auch als EXE baubar), die
 Der Roblox Open-Cloud API-Key bleibt IMMER nur lokal (.env / config.json)
 und wird NIE in den Prompt kopiert. Arena kann ihn nur indirekt über
 /api/roblox/open-cloud benutzen.
+
+Start (unter Windows einfach ArenaStudioConnector.bat doppelklicken):
+  python arena_studio_connector.py                # GUI
+  python arena_studio_connector.py --headless     # nur Bridge + Tunnel
+  python arena_studio_connector.py --check        # Systemcheck / Diagnose
+  python arena_studio_connector.py --version
 """
 from __future__ import annotations
 
@@ -20,10 +26,12 @@ import os
 import re
 import secrets
 import shutil
+import socket
 import subprocess
 import sys
 import threading
 import time
+import traceback
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -32,7 +40,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 APP_NAME = "Arena Studio Connector"
+APP_VERSION = "1.1.0"
 DEFAULT_PORT = 8765
+MIN_PYTHON = (3, 9)
 TUNNEL_RE = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com", re.I)
 
 # --------------------------------------------------------------------------- #
@@ -40,10 +50,40 @@ TUNNEL_RE = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com", re.I)
 # --------------------------------------------------------------------------- #
 
 def app_dir() -> Path:
-    """Ordner der EXE (gefroren) bzw. des Skripts."""
+    """Ordner der App: neben dem Skript bzw. neben einer evtl. gebauten EXE.
+
+    Dort liegen .env, config.json, cloudflared, last_error.log und der Ordner
+    plugin/ - also immer dort, wo auch ArenaStudioConnector.bat liegt.
+    """
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent
     return Path(__file__).resolve().parent
+
+
+def is_writable(path: Path) -> bool:
+    """Kann die App in diesem Ordner Dateien anlegen (config.json, .env, ...)?"""
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+        probe = path / ".schreibtest"
+        probe.write_text("ok", encoding="utf-8")
+        probe.unlink()
+        return True
+    except Exception:
+        return False
+
+
+def port_in_use(port: int) -> bool:
+    """Ist der lokale Port schon belegt (z. B. von einer zweiten Kopie)?"""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(0.8)
+        if s.connect_ex(("127.0.0.1", port)) == 0:
+            return True
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        try:
+            s.bind(("127.0.0.1", port))
+        except OSError:
+            return True
+    return False
 
 
 def load_dotenv(path: Path) -> dict:
@@ -429,15 +469,33 @@ class Tunnel:
         urllib.request.urlretrieve(url, dest)
         return dest
 
-    def start(self, port: int, on_url):
-        exe = self.cloudflared_path()
-        if not exe:
-            exe = str(self.download_cloudflared(
-                app_dir() / ("cloudflared.exe" if os.name == "nt" else "cloudflared")))
-        self.proc = subprocess.Popen(
-            [exe, "tunnel", "--no-autoupdate", "--url", f"http://127.0.0.1:{port}"],
-            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
-            bufsize=1, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    def start(self, port: int, on_url, on_error=None):
+        """Startet den Tunnel. on_url(url) bei Erfolg, on_error(text) bei Problemen."""
+        def fail(msg: str) -> None:
+            if on_error:
+                on_error(msg)
+            else:
+                print(f"[!] Tunnel: {msg}", flush=True)
+
+        try:
+            exe = self.cloudflared_path()
+            if not exe:
+                fail("cloudflared fehlt - lade es einmalig von GitHub herunter ...")
+                dest = app_dir() / ("cloudflared.exe" if os.name == "nt" else "cloudflared")
+                exe = str(self.download_cloudflared(dest))
+        except Exception as exc:
+            fail(f"cloudflared konnte nicht geladen werden ({exc}). "
+                 f"Ohne Tunnel ist die Bridge nur lokal erreichbar.")
+            return
+
+        try:
+            self.proc = subprocess.Popen(
+                [exe, "tunnel", "--no-autoupdate", "--url", f"http://127.0.0.1:{port}"],
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                bufsize=1, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        except Exception as exc:
+            fail(f"cloudflared konnte nicht gestartet werden ({exc}).")
+            return
 
         def reader():
             assert self.proc and self.proc.stdout
@@ -447,6 +505,9 @@ class Tunnel:
                     self.url = m.group(0)
                     on_url(self.url)
                     return
+            fail("Der Tunnel wurde beendet, bevor eine URL erschien "
+                 "(keine Internetverbindung? Firewall/Virenschutz?).")
+
         threading.Thread(target=reader, daemon=True).start()
 
     def stop(self):
@@ -461,16 +522,28 @@ class Tunnel:
 # --------------------------------------------------------------------------- #
 
 PLUGIN_TEMPLATE = Path(__file__).with_name("plugin") / "ArenaBridgePlugin.lua"
+PLUGIN_NAME = "ArenaBridgePlugin.lua"
+
+
+def plugin_template_path() -> Path | None:
+    """Findet plugin/ArenaBridgePlugin.lua - auch bei verschobenem Skript oder EXE."""
+    candidates = [
+        PLUGIN_TEMPLATE,                                            # neben dem Skript
+        app_dir() / "plugin" / PLUGIN_NAME,                         # im App-Ordner
+        Path.cwd() / "plugin" / PLUGIN_NAME,                        # aktuelles Verzeichnis
+        Path(getattr(sys, "_MEIPASS", app_dir())) / "plugin" / PLUGIN_NAME,  # EXE-Build
+    ]
+    for cand in candidates:
+        if cand.exists():
+            return cand
+    return None
 
 
 def plugin_source(bridge_url_local: str, token: str) -> str:
-    src = ""
-    if PLUGIN_TEMPLATE.exists():
-        src = PLUGIN_TEMPLATE.read_text(encoding="utf-8")
-    else:  # in der EXE ist die Datei über _MEIPASS eingebettet
-        bundled = Path(getattr(sys, "_MEIPASS", app_dir())) / "plugin" / "ArenaBridgePlugin.lua"
-        if bundled.exists():
-            src = bundled.read_text(encoding="utf-8")
+    path = plugin_template_path()
+    if not path:
+        return ""
+    src = path.read_text(encoding="utf-8")
     return src.replace("__BRIDGE_URL__", bridge_url_local).replace("__BRIDGE_TOKEN__", token)
 
 
@@ -494,13 +567,14 @@ def run_gui():
     state = {"places": [], "running": False}
 
     root = tk.Tk()
-    root.title(APP_NAME)
+    root.title(f"{APP_NAME} {APP_VERSION}")
     root.geometry("860x640")
     root.minsize(760, 560)
 
     top = ttk.Frame(root, padding=10)
     top.pack(fill="x")
-    ttk.Label(top, text="Arena Studio Connector", font=("Segoe UI", 16, "bold")).pack(anchor="w")
+    ttk.Label(top, text=f"Arena Studio Connector {APP_VERSION}",
+              font=("Segoe UI", 16, "bold")).pack(anchor="w")
     ttk.Label(top, text="1) Username eintragen → Places laden   2) Bridge + Tunnel starten   "
                         "3) Studio öffnen (Plugin)   4) Beim Place auf „Prompt kopieren“ klicken → an Arena AI schicken",
               wraplength=820).pack(anchor="w", pady=(2, 6))
@@ -590,11 +664,27 @@ def run_gui():
                                 encoding="utf-8")
         bridge.config = cfg
         port = int(cfg.get("port", DEFAULT_PORT))
-        bridge.start(port)
+        if port_in_use(port):
+            messagebox.showwarning(APP_NAME, f"Port {port} ist schon belegt.\n\n"
+                                   "Läuft die App vielleicht schon in einem anderen Fenster? "
+                                   "Dann dieses Fenster schließen – pro PC genügt eine Instanz.\n\n"
+                                   f"Sonst bitte in der Datei config.json einen anderen Port "
+                                   f"eintragen (z. B. {port + 1}).")
+            return
+        try:
+            bridge.start(port)
+        except OSError as exc:
+            messagebox.showerror(APP_NAME, f"Bridge konnte nicht starten: {exc}")
+            return
         status_var.set(f"Bridge läuft lokal auf http://127.0.0.1:{port} – starte Cloudflare-Tunnel …")
-        tunnel.start(port, lambda url: root.after(0, lambda: (
-            tunnel_var.set(f"Tunnel: {url}"),
-            status_var.set("✅ Bereit! Jetzt Place in Studio öffnen und „Prompt kopieren“ klicken."))))
+        tunnel.start(
+            port,
+            lambda url: root.after(0, lambda: (
+                tunnel_var.set(f"Tunnel: {url}"),
+                status_var.set("✅ Bereit! Jetzt Place in Studio öffnen und „Prompt kopieren“ klicken."))),
+            lambda err: root.after(0, lambda err=err: (
+                tunnel_var.set("Tunnel: – (Fehler)"),
+                status_var.set(f"⚠️ {err}"))))
         state["running"] = True
         btn_bridge.config(text="⏹ Stoppen")
 
@@ -602,7 +692,10 @@ def run_gui():
         port = int(cfg.get("port", DEFAULT_PORT))
         src = plugin_source(f"http://127.0.0.1:{port}", bridge.token)
         if not src:
-            messagebox.showerror(APP_NAME, "Plugin-Datei plugin/ArenaBridgePlugin.lua nicht gefunden.")
+            messagebox.showerror(APP_NAME, "Die Plugin-Datei wurde nicht gefunden:\n"
+                                           f"{app_dir() / 'plugin' / PLUGIN_NAME}\n\n"
+                                           "Bitte das ZIP komplett entpacken (Rechtsklick → "
+                                           "„Alle extrahieren …“), danach die App erneut starten.")
             return
         folder = plugins_folder()
         folder.mkdir(parents=True, exist_ok=True)
@@ -631,22 +724,184 @@ def run_gui():
     root.mainloop()
 
 
-def main():
-    if "--headless" in sys.argv:  # nur Bridge+Tunnel ohne GUI (zum Testen / Server)
-        cfg = load_config()
-        bridge = Bridge(cfg)
-        port = int(cfg.get("port", DEFAULT_PORT))
-        bridge.start(port)
-        print(f"Bridge: http://127.0.0.1:{port}  Token: {bridge.token}", flush=True)
-        Tunnel().start(port, lambda u: print(f"Tunnel: {u}\nTOKEN={bridge.token}", flush=True),
-                       lambda e: print(e, flush=True))
-        try:
-            threading.Event().wait()
-        except KeyboardInterrupt:
-            pass
-    else:
+def main() -> int:
+    args = [a.lower() for a in sys.argv[1:]]
+
+    if any(a in ("-h", "--help", "/?", "/help") for a in args):
+        print(__doc__ or "")
+        print(f"Version {APP_VERSION}  -  {APP_NAME}")
+        return 0
+
+    if any(a in ("--version", "/version", "-v") for a in args):
+        print(f"{APP_NAME} {APP_VERSION}  (Python {sys.version.split()[0]})")
+        return 0
+
+    if any(a in ("--check", "/check") for a in args):
+        return run_check()
+
+    if any(a in ("--headless", "/headless") for a in args):
+        return run_headless()
+
+    try:
         run_gui()
+    except Exception as exc:  # GUI nicht möglich -> trotzdem sichtbare Fehlermeldung
+        return report_crash(exc)
+    return 0
+
+
+def run_headless() -> int:
+    """Nur Bridge + Cloudflare-Tunnel, ohne Fenster (zum Testen / für Server)."""
+    cfg = load_config()
+    bridge = Bridge(cfg)
+    port = int(cfg.get("port", DEFAULT_PORT))
+    try:
+        bridge.start(port)
+    except OSError as exc:
+        print(f"[X] Port {port} ist belegt ({exc}). Bitte in config.json einen "
+              f"anderen Port eintragen.", flush=True)
+        return 1
+    print(f"[OK] Bridge: http://127.0.0.1:{port}", flush=True)
+    print(f"TOKEN={bridge.token}", flush=True)
+    Tunnel().start(port, lambda u: print(f"Tunnel: {u}\nTOKEN={bridge.token}", flush=True),
+                   lambda e: print(e, flush=True))
+    print("[i] Laeuft. Beenden mit Strg+C.", flush=True)
+    try:
+        threading.Event().wait()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        bridge.stop()
+    return 0
+
+
+# --------------------------------------------------------------------------- #
+# Systemcheck (--check): zeigt genau, was fehlt
+# --------------------------------------------------------------------------- #
+
+def run_check() -> int:
+    print(f"{APP_NAME} {APP_VERSION} - Systemcheck")
+    print("=" * 66)
+    problems: list[str] = []
+    hints: list[str] = []
+
+    # 1) Python
+    if sys.version_info >= MIN_PYTHON:
+        print(f"[OK] Python {sys.version.split()[0]}  ({sys.executable})")
+    else:
+        print(f"[X]  Python {sys.version.split()[0]} ist zu alt - bitte {MIN_PYTHON[0]}.{MIN_PYTHON[1]}+ installieren")
+        problems.append("python")
+
+    # 2) App-Ordner + Schreibrechte
+    base = app_dir()
+    print(f"[i]  App-Ordner: {base}")
+    if is_writable(base):
+        print("[OK] App-Ordner ist beschreibbar (.env, config.json, cloudflared moeglich)")
+    else:
+        print("[X]  App-Ordner ist NICHT beschreibbar - bitte ZIP nach z. B. C:\\Arena entpacken")
+        problems.append("schreibrechte")
+
+    # 3) Plugin-Datei
+    plugin = plugin_template_path()
+    if plugin:
+        print(f"[OK] Plugin gefunden: {plugin}")
+    else:
+        print("[X]  plugin/ArenaBridgePlugin.lua fehlt - ZIP nicht komplett entpackt?")
+        problems.append("plugin")
+
+    # 4) tkinter (GUI)
+    try:
+        import tkinter  # noqa: PLC0415
+        print(f"[OK] tkinter {tkinter.TkVersion} - Fenster/GUI moeglich")
+    except Exception as exc:
+        print(f"[X]  tkinter fehlt ({exc}) - GUI nicht moeglich. Nur --headless laeuft.")
+        print("     Behebung: Python neu installieren und 'tcl/tk and IDLE' anhaken.")
+        problems.append("tkinter")
+
+    # 5) Roblox-Key (.env / config.json) - nur fuer Dashboard-Aktionen noetig
+    cfg = load_config()
+    if cfg.get("roblox_api_key"):
+        print("[OK] Roblox API-Key lokal gesetzt (bleibt auf diesem PC)")
+    else:
+        print("[i]  Roblox API-Key: nicht gesetzt - nur fuer Dashboard-Aktionen noetig")
+        hints.append("Key optional: .env.example als .env kopieren und ausfuellen")
+
+    print(f"[i]  Roblox-Username: {cfg.get('roblox_username') or '(noch nicht gespeichert)'}")
+
+    # 6) Port
+    port = int(cfg.get("port", DEFAULT_PORT))
+    if port_in_use(port):
+        print(f"[!]  Port {port} ist belegt - evtl. laeuft die App schon, oder in")
+        print("     config.json einen anderen Port eintragen (z. B. 8766).")
+    else:
+        print(f"[OK] Port {port} ist frei (Bridge/Tunnel koennen starten)")
+
+    # 7) cloudflared (Tunnel)
+    local_cf = app_dir() / ("cloudflared.exe" if os.name == "nt" else "cloudflared")
+    if local_cf.exists():
+        print(f"[OK] cloudflared vorhanden: {local_cf}")
+    elif shutil.which("cloudflared"):
+        print(f"[OK] cloudflared im PATH gefunden: {shutil.which('cloudflared')}")
+    else:
+        print("[i]  cloudflared fehlt noch - die App laedt es beim ersten Start")
+        print("     automatisch von GitHub herunter")
+
+    # 8) Studio-Plugin-Ordner
+    folder = plugins_folder()
+    print(f"[i]  Roblox-Plugin-Ordner: {folder}")
+    if (folder / PLUGIN_NAME).exists():
+        print("[OK] ArenaBridgePlugin.lua ist in Roblox Studio installiert")
+    else:
+        print("[i]  Plugin noch nicht installiert - in der App 'Studio-Plugin installieren' klicken")
+
+    print("=" * 66)
+    if problems:
+        print("Ergebnis: Es fehlt noch etwas:")
+        for p in problems:
+            print(f"  - {p}")
+        print("Tipp: ArenaStudioConnector.bat doppelklicken - der Starter findet")
+        print("      Python selbst und bietet die Installation an.")
+        return 1
+    for h in hints:
+        print(f"Hinweis: {h}")
+    print("Ergebnis: Alles bereit - ArenaStudioConnector.bat doppelklicken!")
+    return 0
+
+
+# --------------------------------------------------------------------------- #
+# Startfehler sichtbar machen (wichtig bei Start ohne Konsole)
+# --------------------------------------------------------------------------- #
+
+def crash_log_path() -> Path:
+    return app_dir() / "last_error.log"
+
+
+def report_crash(exc: BaseException) -> int:
+    """Schreibt ein Fehlerlog neben die App und zeigt (unter Windows) ein Fenster."""
+    text = (f"{APP_NAME} {APP_VERSION}\n"
+            f"Zeit:   {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+            f"Python: {sys.version}\n"
+            f"Ordner: {app_dir()}\n\n"
+            + "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)))
+    try:
+        crash_log_path().write_text(text, encoding="utf-8")
+        log_hint = f"\n\nDetails stehen in:\n{crash_log_path()}"
+    except Exception:
+        log_hint = ""
+    print(text, file=sys.stderr, flush=True)
+
+    summary = f"{type(exc).__name__}: {exc}"[:1200]
+    if os.name == "nt":
+        try:  # auch ohne Konsolenfenster (pythonw) sichtbar
+            import ctypes
+            ctypes.windll.user32.MessageBoxW(
+                None,
+                f"{APP_NAME} konnte nicht gestartet werden:\n\n{summary}{log_hint}",
+                f"{APP_NAME} - Fehler", 0x10,
+            )
+        except Exception:
+            pass
+    return 1
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

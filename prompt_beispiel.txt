@@ -14,6 +14,6 @@ VERBINDUNGSDATEN (streng vertraulich, nirgends posten/loggen):
      GamePässe/Dev-Produkte und die Sicherheitsregeln – siehe
      build_prompt() in arena_studio_connector.py)
 ------------------------------------------------------------------------------
-Früher war das eine .bat, die diesen Prompt kopiert hat – die EXE macht das
-jetzt besser: Sie zeigt deine Places und kopiert den Prompt passend zur
-angeklickten Place. Eine .bat ist daher nicht mehr nötig.
+Gestartet wird die App mit ArenaStudioConnector.bat (ZIP entpacken, doppel-
+klicken) – sie zeigt deine Places und kopiert den Prompt passend zur ange-
+klickten Place. Eine EXE zum Installieren gibt es bewusst nicht mehr.

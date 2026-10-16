@@ -1,0 +1,10 @@
+# Windows-Batchdateien brauchen CRLF - mit LF brechen goto/for/labels.
+*.bat text eol=crlf
+
+# Alles andere normal, damit die Reproduzierbarkeit des ZIPs erhalten bleibt.
+*.py  text eol=lf
+*.md  text eol=lf
+*.txt text eol=lf
+*.lua text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
