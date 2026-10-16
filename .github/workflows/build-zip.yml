@@ -55,6 +55,27 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Diagnose Zeilenenden und Dateizugriff (temporaer)
+        shell: pwsh
+        if: always()
+        run: |
+          $raw = [System.IO.File]::ReadAllText("ArenaStudioConnector.bat")
+          $crlf = ([regex]::Matches($raw, "`r`n")).Count
+          $nurLf = ([regex]::Matches($raw, "(?<!`r)`n")).Count
+          $probe = @(
+            '@echo off',
+            'echo dp0=[%~dp0]',
+            'if exist "%~dp0VERSION" (echo EXIST_DP0=JA) else (echo EXIST_DP0=NEIN)',
+            'if exist VERSION (echo EXIST_CWD=JA) else (echo EXIST_CWD=NEIN)',
+            'for /f "delims=" %%V in (''type "%~dp0VERSION"'') do echo READ_DP0=[%%V]',
+            'for /f "delims=" %%V in (''type VERSION'') do echo READ_CWD=[%%V]'
+          )
+          Set-Content -Path probe.bat -Value $probe -Encoding ascii
+          $out = cmd /c probe.bat 2>&1 | Out-String
+          $kurz = "CRLF=$crlf LF-only=$nurLf :: " + ($out -replace "\r?\n", " | ")
+          if ($kurz.Length -gt 900) { $kurz = $kurz.Substring(0, 900) }
+          Write-Host "::error title=Diagnose::$kurz"
+
       - name: "Starter testen: /version, /help, /check (< nul verhindert Warten)"
         shell: pwsh
         run: |
