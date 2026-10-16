@@ -350,10 +350,10 @@ pause
 goto end_ok
 
 :show_version
+rem APP_VERSION aus der Python-Datei lesen. "delims== " trennt am Gleichheits-
+rem zeichen und am Leerzeichen, %%~V entfernt die Anfuehrungszeichen.
 set "VER="
-for /f "tokens=2 delims==" %%V in ('findstr /b /c:"APP_VERSION" "%~dp0%APP%" 2^>nul') do set "VER=%%V"
-if defined VER set "VER=!VER: =!"
-if defined VER set "VER=!VER:"=!"
+for /f "tokens=2 delims== " %%V in ('findstr /b /c:"APP_VERSION" "%~dp0%APP%" 2^>nul') do set "VER=%%~V"
 if not defined VER set "VER=unbekannt"
 echo.
 echo Arena Studio Connector !VER!

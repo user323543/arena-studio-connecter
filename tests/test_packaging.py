@@ -61,6 +61,17 @@ class StarterTest(unittest.TestCase):
         self.assertNotIn("dist\\", low)
         self.assertIn("--headless", low)  # laeuft auch ohne Fenster
 
+    def test_version_wird_robust_gelesen(self):
+        # "%%~V" entfernt die Anfuehrungszeichen aus der APP_VERSION-Zeile;
+        # die frueher genutzte !VER:"=!-Ersetzung war zu fehleranfaellig.
+        self.assertIn('set "VER=%%~V"', self.text)
+        self.assertNotIn('!VER:"=!', self.text)
+        self.assertIn('delims== ', self.text)
+
+    def test_start_ohne_python_wird_abgefangen(self):
+        for needle in ("kein Python 3.9", "python.org/downloads/windows", "choice /c JN"):
+            self.assertIn(needle, self.text)
+
     def test_startet_gui_konsolenlos(self):
         self.assertIn("pythonw.exe", self.text)
         self.assertIn("start \"\"", self.text)
