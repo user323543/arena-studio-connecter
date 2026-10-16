@@ -75,9 +75,16 @@ jobs:
             $out = cmd /c "ArenaStudioConnector.bat $arg < nul" 2>&1 | Out-String
             $out | Add-Content $log
             Write-Host $out
-            if ($out -notmatch [regex]::Escape($erwartet[$arg])) { $fehler += "$arg ($($erwartet[$arg]) fehlt)" }
+            if ($out -notmatch [regex]::Escape($erwartet[$arg])) {
+              $fehler += $arg
+              # Annotation: so steht die echte Ausgabe in der API (auch wenn
+              # das Job-Log nicht abrufbar ist)
+              $kurz = ($out -replace "\r?\n", " | ")
+              if ($kurz.Length -gt 900) { $kurz = $kurz.Substring(0, 900) }
+              Write-Host "::error title=Smoketest $arg::$kurz"
+            }
           }
-          if ($fehler.Count -gt 0) { throw "Starter-Test fehlgeschlagen: $($fehler -join ', ')" }
+          if ($fehler.Count -gt 0) { throw "Starter-Test fehlgeschlagen bei: $($fehler -join ', ')" }
 
       - name: Bridge startet ohne Fenster und antwortet
         shell: pwsh
