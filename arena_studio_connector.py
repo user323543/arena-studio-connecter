@@ -703,8 +703,14 @@ def copy_to_clipboard(text: str) -> tuple[bool, str]:
                                               encoding="utf-8-sig", newline="\r\n")
             tmp.write(text)
             tmp.close()
-            cmd = ("Get-Content -LiteralPath " + repr(tmp.name).replace("'", "''")
-                   + " -Raw -Encoding UTF8 | Set-Clipboard")
+            path = repr(tmp.name).replace("'", "''")
+            # Setzen und direkt pruefen: so meldet die App keinen Erfolg,
+            # wenn die Zwischenablage den Text nicht aufgenommen hat.
+            cmd = ("$t = Get-Content -LiteralPath " + path + " -Raw -Encoding UTF8; "
+                   "Set-Clipboard -Value $t; "
+                   "$c = Get-Clipboard -Raw; "
+                   "if ($null -eq $c) { exit 1 }; "
+                   "if (($c -replace \"`r`n\", \"`n\") -ne ($t -replace \"`r`n\", \"`n\")) { exit 1 }")
             result = subprocess.run(
                 ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", cmd],
                 capture_output=True, text=True, timeout=30,
