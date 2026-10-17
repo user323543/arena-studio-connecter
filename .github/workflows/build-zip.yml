@@ -150,7 +150,18 @@ jobs:
           Write-Host "OK: /newtoken rotiert und aktualisiert das Plugin"
 
       - name: "Starter-Standard: Token + URL anzeigen, Prompt in die Zwischenablage"
-        run: python tests/windows_smoke.py
+        shell: pwsh
+        run: |
+          $out = python tests/windows_smoke.py 2>&1 | Out-String
+          $code = $LASTEXITCODE
+          Write-Host $out
+          Set-Content -Path windows_smoke.log -Value $out -Encoding utf8
+          if ($code -ne 0) {
+            $kurz = ($out -replace "\r?\n", " | ")
+            if ($kurz.Length -gt 950) { $kurz = $kurz.Substring(0, 950) }
+            Write-Host "::error title=Smoke::$kurz"
+            exit $code
+          }
 
       - name: Smoketest-Ausgabe als Artifact
         if: always()

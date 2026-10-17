@@ -22,6 +22,14 @@ import time
 import urllib.request
 from pathlib import Path
 
+# Auf Windows ist stdout sonst cp1252 - "fuer"/Umlaute wuerden den Test mit
+# UnicodeEncodeError abbrechen, bevor irgendetwas zu sehen ist.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 ROOT = Path(__file__).resolve().parent.parent
 APP = ROOT / "arena_studio_connector.py"
 PORT = 8765
