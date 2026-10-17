@@ -36,11 +36,16 @@ PORT = 8765
 BASE = f"http://127.0.0.1:{PORT}"
 
 
+def safe(text: str) -> str:
+    """Nur ASCII auf die Konsole - unabhaengig von der Windows-Codepage."""
+    return text.encode("ascii", "replace").decode("ascii")
+
+
 def fail(message: str, log: str = "") -> None:
     print(f"[X] {message}", flush=True)
     if log:
         print("-" * 70)
-        print(log[-4000:])
+        print(safe(log[-4000:]))
         print("-" * 70)
     sys.exit(1)
 
@@ -67,11 +72,12 @@ def main() -> int:
     env = {**os.environ,
            "ARENA_APP_DIR": str(app_dir),
            "ARENA_PLUGIN_DIR": str(app_dir / "plugins"),
-           "PYTHONIOENCODING": "utf-8"}
+           "PYTHONIOENCODING": "utf-8",
+           "PYTHONUTF8": "1"}
 
     print(f"[i] Starte {APP.name} --no-tunnel (App-Ordner: {app_dir})")
     proc = subprocess.Popen(
-        [sys.executable, "-u", str(APP), "--no-tunnel"],
+        [sys.executable, "-X", "utf8", "-u", str(APP), "--no-tunnel"],
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
         encoding="utf-8", errors="replace", env=env, cwd=str(app_dir))
 
@@ -83,7 +89,7 @@ def main() -> int:
             if not line:
                 break
             log += line
-            print(line, end="", flush=True)
+            print(safe(line), end="", flush=True)
             if "VERBINDUNGSDATEN" in log and "SO GEHT'S" in log:
                 break
 
@@ -110,7 +116,7 @@ def main() -> int:
         prompt = prompt_path.read_text(encoding="utf-8")
         for needle in (token, f"http://127.0.0.1:{PORT}", "MEINE AUFGABE", "/api/status"):
             if needle not in prompt:
-                fail(f"prompt.txt unvollstaendig - fehlt: {needle}", prompt)
+                fail(f"prompt.txt unvollstaendig - fehlt: {needle}", safe(prompt))
         print("[OK] prompt.txt enthaelt Token, URL und die Aufgabe")
 
         # Plugin wurde mit Vorbelegung installiert
