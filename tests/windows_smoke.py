@@ -143,7 +143,13 @@ def main() -> int:
             proc.wait(timeout=10)
         except Exception:
             pass
-        tmp.cleanup()
+        # Windows gibt Dateien des Kindprozesses manchmal erst verzoegert frei -
+        # ein nicht loeschbarer Temp-Ordner darf den Test nicht kippen.
+        try:
+            time.sleep(0.5)
+            tmp.cleanup()
+        except Exception as exc:
+            print(f"[i] Temp-Ordner bleibt liegen ({exc})")
 
     print()
     print("[OK] Smoketest erfolgreich.")
