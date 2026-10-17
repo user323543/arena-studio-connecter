@@ -105,6 +105,12 @@ class SicherheitsnetzTest(unittest.TestCase):
         self.assertIn(":warn_temp", self.text)
         self.assertIn("Alle extrahieren", self.text)
 
+    def test_windows_smoke_skript_prueft_den_ablauf(self):
+        smoke = (ROOT / "tests" / "windows_smoke.py").read_text(encoding="utf-8")
+        for needle in ("VERBINDUNGSDATEN", "prompt.txt", "MEINE AUFGABE",
+                       "/api/status", "Get-Clipboard", "ARENA_APP_DIR"):
+            self.assertIn(needle, smoke)
+
     def test_diagnose_bat_ist_dabei(self):
         diag = (ROOT / "Diagnose.bat").read_bytes()
         self.assertIn(b"diagnose_log.txt", diag)
