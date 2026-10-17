@@ -39,24 +39,29 @@ where pythonw >>"%LOG%" 2>&1
 py -3 --version >>"%LOG%" 2>&1
 >>"%LOG%" echo.
 
-rem python.exe aus dem PATH nur starten, wenn es kein Microsoft-Store-Platzhalter
-rem ist - sonst oeffnet sich unnoetig der Store.
+rem Erstes echtes python.exe aus dem PATH nehmen. Wichtig: "where python" kann
+rem MEHRERE Treffer liefern - z. B. das echte Python und zusaetzlich den
+rem Microsoft-Store-Platzhalter (WindowsApps). Zeilenweise filtern, sonst wird
+rem ein vorhandenes Python faelschlich uebersprungen.
+set "PYEXE="
+for /f "delims=" %%P in ('where python 2^>nul ^| findstr /i /v /l /c:"WindowsApps"') do if not defined PYEXE set "PYEXE=%%P"
+if defined PYEXE goto have_python
+
 where python >nul 2>&1
 if errorlevel 1 goto no_python
-where python | findstr /i /l /c:"WindowsApps" >nul 2>&1
-if not errorlevel 1 goto store_alias
-
->>"%LOG%" echo --- python.exe direkt ---
-python --version >>"%LOG%" 2>&1
-python -c "import sys;print('Version',sys.version.split()[0]);print('Pfad',sys.executable)" >>"%LOG%" 2>&1
-python -c "import tkinter;print('tkinter OK',tkinter.TkVersion)" >>"%LOG%" 2>&1
->>"%LOG%" echo.
->>"%LOG%" echo --- App-Systemcheck (python arena_studio_connector.py --check) ---
-python "%APP%" --check >>"%LOG%" 2>&1
+>>"%LOG%" echo Nur der Microsoft-Store-Platzhalter gefunden - uebersprungen.
+>>"%LOG%" echo Tipp: Python von python.org installieren oder "py -3" nutzen.
 goto show
 
-:store_alias
->>"%LOG%" echo python.exe ist nur der Microsoft-Store-Platzhalter - uebersprungen.
+:have_python
+>>"%LOG%" echo --- python.exe direkt ---
+>>"%LOG%" echo Datei: %PYEXE%
+"%PYEXE%" --version >>"%LOG%" 2>&1
+"%PYEXE%" -c "import sys;print('Version',sys.version.split()[0]);print('Pfad',sys.executable)" >>"%LOG%" 2>&1
+"%PYEXE%" -c "import tkinter;print('tkinter OK',tkinter.TkVersion)" >>"%LOG%" 2>&1
+>>"%LOG%" echo.
+>>"%LOG%" echo --- App-Systemcheck (arena_studio_connector.py --check) ---
+"%PYEXE%" "%APP%" --check >>"%LOG%" 2>&1
 goto show
 
 :no_python
