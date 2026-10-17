@@ -20,13 +20,13 @@ set "APP=%DIR%arena_studio_connector.py"
 >>"%LOG%" echo.
 
 >>"%LOG%" echo --- Dateien in diesem Ordner ---
-if exist "%APP%" >>"%LOG%" echo OK    arena_studio_connector.py
-if not exist "%APP%" >>"%LOG%" echo FEHLT arena_studio_connector.py
-if exist "%DIR%plugin\ArenaBridgePlugin.lua" >>"%LOG%" echo OK    plugin\ArenaBridgePlugin.lua
-if not exist "%DIR%plugin\ArenaBridgePlugin.lua" >>"%LOG%" echo FEHLT plugin\ArenaBridgePlugin.lua
-if exist "%DIR%VERSION" >>"%LOG%" echo OK    VERSION
-if exist "%DIR%config.json" >>"%LOG%" echo OK    config.json (liegt lokal)
-if exist "%DIR%.env" >>"%LOG%" echo OK    .env (liegt lokal)
+if exist "%APP%" echo OK    arena_studio_connector.py>>"%LOG%"
+if not exist "%APP%" echo FEHLT arena_studio_connector.py>>"%LOG%"
+if exist "%DIR%plugin\ArenaBridgePlugin.lua" echo OK    plugin\ArenaBridgePlugin.lua>>"%LOG%"
+if not exist "%DIR%plugin\ArenaBridgePlugin.lua" echo FEHLT plugin\ArenaBridgePlugin.lua>>"%LOG%"
+if exist "%DIR%VERSION" echo OK    VERSION>>"%LOG%"
+if exist "%DIR%config.json" echo OK    config.json liegt lokal>>"%LOG%"
+if exist "%DIR%.env" echo OK    .env liegt lokal>>"%LOG%"
 >>"%LOG%" echo.
 
 >>"%LOG%" echo --- Python im PATH ---

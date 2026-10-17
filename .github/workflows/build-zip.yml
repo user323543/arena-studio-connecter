@@ -105,6 +105,9 @@ jobs:
           if (-not (Test-Path diagnose_log.txt)) { throw "Diagnose.bat hat kein Log geschrieben" }
           $log = Get-Content diagnose_log.txt -Raw
           Write-Host $log
+          $kurz = ($log -replace "\r?\n", " | ")
+          if ($kurz.Length -gt 950) { $kurz = $kurz.Substring(0, 950) }
+          Write-Host "::warning title=Diagnose-Log::$kurz"
           foreach ($needle in @('Arena Studio Connector - Diagnose', '--- Dateien',
                                 'OK    arena_studio_connector.py', '--- Python',
                                 'Systemcheck', '[OK] Python')) {
