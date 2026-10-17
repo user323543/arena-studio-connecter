@@ -182,6 +182,13 @@ jobs:
           }
           $clip = Get-Clipboard -Raw
           if (-not $clip -or $clip -notmatch [regex]::Escape($token)) {
+            # Diagnose: Zwischenablage direkt testen (Runner-Session?)
+            $probe = "clipboard-test-$token"
+            Set-Clipboard -Value $probe
+            $back = Get-Clipboard -Raw
+            "CLIP-DEBUG: Set ok=$($back -eq $probe) len=$($clip.Length) match=$($clip -match [regex]::Escape($token))" |
+              Add-Content serve.log
+            Write-Host "::error title=Zwischenablage::$($clip.Length) Zeichen, Token gefunden=$($clip -match [regex]::Escape($token))"
             throw "Prompt wurde nicht in die Zwischenablage kopiert"
           }
           Write-Host "OK: Token/URL angezeigt, prompt.txt geschrieben, Zwischenablage gefuellt"
