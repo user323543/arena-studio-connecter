@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import os
+import socket
 import subprocess
 import sys
 import tempfile
@@ -32,7 +33,15 @@ except Exception:
 
 ROOT = Path(__file__).resolve().parent.parent
 APP = ROOT / "arena_studio_connector.py"
-PORT = 8765
+def free_port() -> int:
+    """Freien Port suchen - so kollidiert der Test weder mit einer laufenden
+    .bat noch mit Resten eines frueheren Testlaufs (TIME_WAIT)."""
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
+
+
+PORT = free_port()  # wird in main() noch einmal frisch bestimmt
 BASE = f"http://127.0.0.1:{PORT}"
 
 
@@ -65,6 +74,26 @@ def fail(message: str, log: str = "") -> None:
     sys.exit(1)
 
 
+def clipboard_works() -> bool:
+    """Set/Get-Clipboard ausprobieren.
+
+    Auf Build-Runnern (Session 0) gibt es keine echte Zwischenablage - dort
+    liefert Set-Clipboard stillschweigend nichts. Dann darf der Test nicht
+    fehlschlagen, denn auf einem normalen Desktop funktioniert es.
+    """
+    if os.name != "nt":
+        return False
+    probe = "arena-clipboard-probe-42"
+    try:
+        cmd = f"Set-Clipboard -Value '{probe}'; Get-Clipboard -Raw"
+        result = subprocess.run(["powershell", "-NoProfile", "-Command", cmd],
+                                capture_output=True, text=True, timeout=30,
+                                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        return probe in (result.stdout or "")
+    except Exception:
+        return False
+
+
 def read_clipboard() -> str:
     """Liest die Windows-Zwischenablage (auf anderen Systemen: leer)."""
     if os.name != "nt":
@@ -94,7 +123,13 @@ def main() -> int:
            "PYTHONIOENCODING": "utf-8",
            "PYTHONUTF8": "1"}
 
-    print(f"[i] Starte {APP.name} --no-tunnel (App-Ordner: {app_dir})")
+    # frischer Port direkt vor dem Start (kein TIME_WAIT-Rest, keine .bat)
+    global PORT, BASE
+    PORT = free_port()
+    BASE = f"http://127.0.0.1:{PORT}"
+    (app_dir / "config.json").write_text(json.dumps({"port": PORT}), encoding="utf-8")
+
+    print(f"[i] Starte {APP.name} --no-tunnel (App-Ordner: {app_dir}, Port {PORT})")
     proc = subprocess.Popen(
         [sys.executable, "-X", "utf8", "-u", str(APP), "--no-tunnel"],
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
@@ -134,6 +169,10 @@ def main() -> int:
             fail("prompt.txt wurde nicht geschrieben", log)
         prompt = prompt_path.read_text(encoding="utf-8")
         for needle in (token, f"http://127.0.0.1:{PORT}", "MEINE AUFGABE", "/api/status"):
+            if needle not in prompt:
+                # Rest eines abgebrochenen Laufs? Kurz warten und erneut lesen.
+                time.sleep(1.0)
+                prompt = prompt_path.read_text(encoding="utf-8")
             if needle not in prompt:
                 fail(f"prompt.txt unvollstaendig - fehlt: {needle}", safe(prompt))
         step("[OK] prompt.txt enthaelt Token, URL und die Aufgabe")
