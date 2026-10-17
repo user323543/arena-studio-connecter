@@ -156,8 +156,9 @@ jobs:
           python -u tests/windows_smoke.py > windows_smoke.log 2>&1
           set RC=%errorlevel%
           type windows_smoke.log
+          type windows_smoke_steps.txt
           if not "%RC%"=="0" (
-            powershell -NoProfile -Command "$t=(Get-Content windows_smoke.log -Raw) -replace '\r?\n',' | '; if($t.Length -gt 950){$t=$t.Substring($t.Length-950)}; Write-Host \"::error title=Smoke::$t\""
+            powershell -NoProfile -Command "$t=(Get-Content windows_smoke_steps.txt -Raw) -replace '\r?\n',' | '; if($t.Length -gt 900){$t=$t.Substring($t.Length-900)}; Write-Host \"::error title=Smoke::$t\""
             exit /b %RC%
           )
 

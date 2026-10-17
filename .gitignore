@@ -26,3 +26,6 @@ gui_gestartet.tmp
 
 # Prompt fuer Arena AI (wird bei jedem Start neu erzeugt)
 prompt.txt
+
+windows_smoke_steps.txt
+windows_smoke.log

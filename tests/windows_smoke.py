@@ -36,6 +36,21 @@ PORT = 8765
 BASE = f"http://127.0.0.1:{PORT}"
 
 
+STEPS_FILE = Path(__file__).resolve().parent.parent / "windows_smoke_steps.txt"
+
+
+def step(message: str) -> None:
+    """Schreibt jeden Schritt sofort in eine Datei - auch wenn die Konsole
+    (aus welchem Grund auch immer) keine Ausgabe mehr liefert."""
+    try:
+        with open(STEPS_FILE, "a", encoding="utf-8", errors="replace") as fh:
+            fh.write(safe(message) + "\n")
+            fh.flush()
+    except Exception:
+        pass
+    print(safe(message), flush=True)
+
+
 def safe(text: str) -> str:
     """Nur ASCII auf die Konsole - unabhaengig von der Windows-Codepage."""
     return text.encode("ascii", "replace").decode("ascii")
@@ -66,7 +81,11 @@ def read_clipboard() -> str:
 
 
 def main() -> int:
-    print("[i] Smoketest startet", flush=True)
+    try:
+        STEPS_FILE.write_text("", encoding="utf-8")
+    except Exception:
+        pass
+    step("[i] Smoketest startet")
     tmp = tempfile.TemporaryDirectory()
     app_dir = Path(tmp.name)
     env = {**os.environ,
@@ -93,7 +112,7 @@ def main() -> int:
             if "VERBINDUNGSDATEN" in log and "SO GEHT'S" in log:
                 break
 
-        print("[i] Leseschleife beendet", flush=True)
+        step("[i] Leseschleife beendet")
         if "VERBINDUNGSDATEN" not in log:
             fail("Konsole zeigt keine Verbindungsdaten", log)
 
@@ -105,7 +124,7 @@ def main() -> int:
             fail("Kein Bridge-Token in config.json", log)
         if token not in log:
             fail("Token fehlt in der Konsolenausgabe", log)
-        print("[OK] Konsole zeigt Verbindungsdaten inkl. Token")
+        step("[OK] Konsole zeigt Verbindungsdaten inkl. Token")
 
         prompt_path = app_dir / "prompt.txt"
         deadline = time.time() + 20
@@ -117,7 +136,7 @@ def main() -> int:
         for needle in (token, f"http://127.0.0.1:{PORT}", "MEINE AUFGABE", "/api/status"):
             if needle not in prompt:
                 fail(f"prompt.txt unvollstaendig - fehlt: {needle}", safe(prompt))
-        print("[OK] prompt.txt enthaelt Token, URL und die Aufgabe")
+        step("[OK] prompt.txt enthaelt Token, URL und die Aufgabe")
 
         # Plugin wurde mit Vorbelegung installiert
         plugin = app_dir / "plugins" / "ArenaBridgePlugin.lua"
@@ -125,7 +144,7 @@ def main() -> int:
             fail(f"Studio-Plugin fehlt: {plugin}", log)
         if token not in plugin.read_text(encoding="utf-8"):
             fail("Token steht nicht als Vorbelegung im Plugin")
-        print("[OK] Studio-Plugin installiert (URL + Token vorbelegt)")
+        step("[OK] Studio-Plugin installiert (URL + Token vorbelegt)")
 
         # Bridge antwortet
         request = urllib.request.Request(f"{BASE}/api/status",
@@ -134,7 +153,7 @@ def main() -> int:
             data = json.loads(resp.read())
         if not data.get("ok"):
             fail(f"/api/status antwortet nicht ok: {data}", log)
-        print("[OK] /api/status antwortet mit dem Token")
+        step("[OK] /api/status antwortet mit dem Token")
 
         # Zwischenablage (nur Windows aussagekraeftig)
         print("[i] Pruefe Zwischenablage ...", flush=True)
@@ -142,9 +161,13 @@ def main() -> int:
             clip = read_clipboard()
             if token not in clip:
                 fail(f"Prompt ist nicht in der Zwischenablage (Laenge {len(clip)})", log)
-            print("[OK] Prompt liegt in der Zwischenablage")
+            step("[OK] Prompt liegt in der Zwischenablage")
         else:
             print("[i] Zwischenablage-Pruefung nur unter Windows")
+    except BaseException:
+        import traceback
+        step("[X] Ausnahme: " + traceback.format_exc()[-1500:])
+        raise
     finally:
         if proc.poll() is None:
             proc.kill()
@@ -160,8 +183,7 @@ def main() -> int:
         except Exception as exc:
             print(f"[i] Temp-Ordner bleibt liegen ({exc})")
 
-    print()
-    print("[OK] Smoketest erfolgreich.")
+    step("[OK] Smoketest erfolgreich.")
     return 0
 
 
