@@ -157,8 +157,9 @@ jobs:
           Write-Host $out
           Set-Content -Path windows_smoke.log -Value $out -Encoding utf8
           if ($code -ne 0) {
+            # letzte Zeilen sind die interessante Fehlermeldung
             $kurz = ($out -replace "\r?\n", " | ")
-            if ($kurz.Length -gt 950) { $kurz = $kurz.Substring(0, 950) }
+            if ($kurz.Length -gt 950) { $kurz = $kurz.Substring($kurz.Length - 950) }
             Write-Host "::error title=Smoke::$kurz"
             exit $code
           }
