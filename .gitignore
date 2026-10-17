@@ -18,3 +18,8 @@ cloudflared
 
 # Lokale, weitergebbare ZIP-Kopie (Build-Output siehe dist/)
 release/
+
+# Laufzeit-Dateien fuer die Fehlersuche
+start_log.txt
+diagnose_log.txt
+gui_gestartet.tmp

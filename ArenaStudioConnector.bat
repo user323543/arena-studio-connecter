@@ -1,5 +1,15 @@
 @echo off
 rem ===========================================================================
+rem  WICHTIG - Sicherheitsnetz gegen "Fenster blitzt auf und ist sofort weg":
+rem  Bei Doppelklick (ohne Argumente) startet sich diese Datei selbst in einem
+rem  Fenster neu, das AUCH BEI FEHLERN offen bleibt (cmd /k). Dadurch ist jede
+rem  Fehlermeldung sichtbar - auch ein Tippfehler weiter unten in der Datei.
+rem  Beim erfolgreichen Start schliesst sich das Fenster selbst (siehe :end_ok).
+if "%~1"=="" (
+    start "Arena Studio Connector" cmd /k ""%~f0" --in-window"
+    exit /b
+)
+rem ===========================================================================
 rem  Arena Studio Connector - Starter fuer Windows
 rem  Doppelklick genuegt: die Datei sucht Python, prueft alles und startet die App.
 rem  Optionen: /console  /headless  /check  /plugin  /newtoken  /unblock  /help
@@ -20,11 +30,23 @@ set "PLUGINPATH=%APPDIR%%PLUGIN%"
 set "ERRLOG=last_error.log"
 set "ERRLOGPATH=%APPDIR%%ERRLOG%"
 set "VERSIONFILE=%APPDIR%VERSION"
+set "STARTLOG=%APPDIR%start_log.txt"
+set "GUIFLAG=%APPDIR%gui_gestartet.tmp"
 set "MODE=gui"
 set "PY_CMD="
 set "PY_ARGS="
 set "PY_EXE="
 set "PYW_EXE="
+
+rem --------------------------------------------------------------------------
+rem  Startlog mitschreiben: zeigt auch dann, wie weit es kam, wenn sich das
+rem  Fenster doch einmal schliesst. (Beim Fehlersuchen bitte mitschicken.)
+rem --------------------------------------------------------------------------
+>"%STARTLOG%" echo %DATE% %TIME%  Arena Studio Connector Starter
+>>"%STARTLOG%" echo Ordner:  %APPDIR%
+>>"%STARTLOG%" echo Aufruf:  %0 %*
+>>"%STARTLOG%" echo Windows: %OS% / %PROCESSOR_ARCHITECTURE%
+>>"%STARTLOG%" echo.
 
 rem --------------------------------------------------------------------------
 rem  Optionen auswerten
@@ -42,10 +64,16 @@ if /i "!A!"=="/version"  goto opt_version
 if /i "!A!"=="/help"     goto help
 if /i "!A!"=="-h"        goto help
 if /i "!A!"=="--help"    goto help
+if /i "!A!"=="--in-window" goto opt_inwindow
 echo.
 echo [!] Unbekannte Option: !A!
 echo     Erlaubt sind: /console  /headless  /check  /plugin  /newtoken  /unblock  /help
 goto help
+
+:opt_inwindow
+set "IN_WINDOW=1"
+shift
+goto argloop
 
 :opt_console
 set "MODE=console"
@@ -111,6 +139,12 @@ if not exist "%PLUGINPATH%" (
 )
 
 rem --------------------------------------------------------------------------
+rem  Laeuft die Datei noch direkt aus der ZIP-Vorschau (temporaerer Ordner)?
+rem --------------------------------------------------------------------------
+echo "%APPDIR%" | findstr /i /l /c:"\Temp\" >nul 2>&1
+if not errorlevel 1 goto warn_temp
+
+rem --------------------------------------------------------------------------
 rem  Python 3.9+ suchen
 rem --------------------------------------------------------------------------
 :find_python
@@ -165,6 +199,7 @@ for %%F in ("!PY_EXE!") do (
 )
 if not exist "!PYW_EXE!" set "PYW_EXE="
 
+>>"%STARTLOG%" echo Python:  !PY_EXE! %PY_ARGS%
 echo [OK] Python gefunden: !PY_EXE!
 "%PY_CMD%" %PY_ARGS% -c "import sys;print('     Version '+sys.version.split()[0])"
 echo.
@@ -195,21 +230,29 @@ if /i "!MODE!"=="newtoken" goto run_newtoken
 rem --------------------------------------------------------------------------
 rem  Standard: GUI ohne Konsolenfenster
 rem --------------------------------------------------------------------------
-set "HADERR="
-if exist "%ERRLOGPATH%" set "HADERR=1"
-
 if not defined PYW_EXE goto run_console_note
 
+rem Alte Signal-/Fehlerdateien weg - sonst ist die Pruefung unten wertlos
+del "%GUIFLAG%" >nul 2>&1
+del "%ERRLOGPATH%" >nul 2>&1
+
+>>"%STARTLOG%" echo [%TIME%] starte: "!PYW_EXE!" !PY_ARGS! "%APPPATH%"
 start "" "!PYW_EXE!" !PY_ARGS! "%APPPATH%"
-echo [OK] App gestartet - die App oeffnet sich gleich als Fenster.
-echo      Dieses Konsolenfenster kann geschlossen werden.
-echo.
-echo      Pruefe gerade, ob die App sauber laeuft ...
-timeout /t 4 /nobreak >nul 2>&1 || ping -n 5 127.0.0.1 >nul
-if defined HADERR goto all_good
+echo [OK] App gestartet - warte, bis das Fenster wirklich da ist ...
+set /a WAIT=0
+
+:wait_gui
+timeout /t 1 /nobreak >nul 2>&1 || ping -n 2 127.0.0.1 >nul
+if exist "%GUIFLAG%" goto all_good
 if exist "%ERRLOGPATH%" goto launch_failed
+set /a WAIT+=1
+if !WAIT! LSS 20 goto wait_gui
+echo [!] Die App hat nach 20 Sekunden kein Lebenszeichen geschickt.
+goto launch_failed
 
 :all_good
+>>"%STARTLOG%" echo [%TIME%] GUI-Signal erhalten - Fenster ist offen
+echo [OK] Fenster ist offen.
 echo.
 echo [i] Fertig. Wenn kein Fenster erscheint:
 echo     ArenaStudioConnector-Konsole.bat doppelklicken - dort siehst du die
@@ -280,13 +323,38 @@ if not "!RC!"=="0" goto fail_no_pause
 goto end_ok
 
 :launch_failed
+>>"%STARTLOG%" echo [%TIME%] FEHLER: GUI-Signal blieb aus
 echo.
-echo [X] Die App hat sich direkt wieder beendet. Fehlerlog:
-echo ---------------------------------------------------------------------------
-type "%ERRLOGPATH%"
-echo ---------------------------------------------------------------------------
-echo     Meist hilft: ZIP komplett entpacken, Python neu installieren oder
-echo     ArenaStudioConnector-Konsole.bat starten.
+echo [X] Die App hat sich nicht geoeffnet (oder ist sofort wieder zugegangen).
+echo.
+if exist "%ERRLOGPATH%" (
+    echo Fehlerlog ^(%ERRLOGPATH%^):
+    echo -----------------------------------------------------------------------
+    type "%ERRLOGPATH%"
+    echo -----------------------------------------------------------------------
+) else (
+    echo     Es gibt kein Fehlerlog - dann steckt der Fehler schon davor.
+    echo     Bitte die Meldungen in diesem Fenster oben pruefen.
+)
+echo.
+echo     So finden wir den Fehler:
+echo       1. Dieses Fenster NICHT schliessen - die Meldung oben ist wichtig.
+echo       2. Alternativ: ArenaStudioConnector-Konsole.bat starten.
+echo       3. Diagnose.bat starten - schreibt diagnose_log.txt in diesen Ordner.
+echo     Der Startverlauf steht hier: %STARTLOG%
+goto fail_wait
+
+:warn_temp
+echo.
+echo [X] Diese Datei laeuft aus einem TEMPORAEREN Ordner:
+echo     %APPDIR%
+echo.
+echo     Das passiert, wenn man die .bat direkt aus der ZIP-Vorschau startet
+echo     oder das ZIP nur doppelklickt, ohne es zu entpacken.
+echo.
+echo     Bitte: Rechtsklick auf die ZIP-Datei -^> "Alle extrahieren ...",
+echo     danach im entpackten Ordner ArenaStudioConnector.bat starten.
+echo.
 goto fail_wait
 
 rem --------------------------------------------------------------------------
@@ -419,8 +487,15 @@ rem --------------------------------------------------------------------------
 rem  Ende
 rem --------------------------------------------------------------------------
 :end_ok
+rem Wurde das Fenster vom Sicherheitsnetz geoeffnet (cmd /k), schliessen wir es
+rem hier bei Erfolg - sonst haengt nach jedem Start eine Konsole herum.
+if defined IN_WINDOW goto close_window
 endlocal
 exit /b 0
+
+:close_window
+endlocal
+exit
 
 :fail_wait
 echo.

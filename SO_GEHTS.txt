@@ -32,6 +32,13 @@
    - Anleitung + benoetigte Rechte stehen ausfuehrlich in der .env.example
 
 PROBLEME?
+   Fenster blitzt nur kurz auf?
+     - ZIP-Datei VOR dem Entpacken zulassen: Rechtsklick auf die ZIP ->
+       Eigenschaften -> "Zulassen" anhaken -> OK -> dann entpacken
+     - nicht direkt aus der ZIP-Vorschau starten
+     - Win+R -> cmd -> cd /d "<Ordner>" -> ArenaStudioConnector.bat /console
+   Diagnose.bat                      -> schreibt diagnose_log.txt mit allen
+                                        Infos (Python, tkinter, Dateien, --check)
    ArenaStudioConnector-Konsole.bat  -> gleicher Start, aber mit allen Meldungen
    ArenaStudioConnector.bat /check   -> Systemcheck: Python, tkinter, Plugin,
                                         Port, cloudflared, Plugin-Ordner
@@ -46,6 +53,7 @@ PROBLEME?
 DATEIEN IN DIESEM ORDNER
    ArenaStudioConnector.bat          Der Starter (hier doppelklicken!)
    ArenaStudioConnector-Konsole.bat  Gleiches, aber mit Meldungen
+   Diagnose.bat                      Fehlersuche: schreibt diagnose_log.txt
    arena_studio_connector.py         Die App selbst (GUI + Bridge + Tunnel)
    VERSION                           Version der App (fuer /version)
    plugin\ArenaBridgePlugin.lua      Roblox-Studio-Plugin (wird beim Start

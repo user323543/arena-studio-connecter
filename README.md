@@ -110,9 +110,12 @@ ArenaStudioConnector.bat /help        # Hilfe anzeigen
 ArenaStudioConnector.bat /version     # Version anzeigen
 ```
 
-Bei Problemen: **`ArenaStudioConnector-Konsole.bat`** starten – dort steht,
-was schiefgeht. Zusätzlich schreibt die App Startfehler nach
-`last_error.log` (liegt neben der `.bat`).
+Bei Problemen: **`ArenaStudioConnector-Konsole.bat`** oder **`Diagnose.bat`**
+starten – dort steht, was schiefgeht. Der Starter schreibt außerdem
+`start_log.txt`, die App Startfehler nach `last_error.log` (beide neben der
+`.bat`). Der Starter öffnet sich bei Doppelklick grundsätzlich in einem
+Fenster, das auch bei Fehlern offen bleibt – es kann also nichts mehr
+unbemerkt „durchblitzen“.
 
 ---
 
@@ -156,6 +159,46 @@ weiter, damit Arena dir exakt sagen kann, welche Berechtigung fehlt, statt
 so zu tun, als hätte es geklappt.
 
 ---
+
+## 🆘 „Fenster blitzt nur kurz auf und ist sofort weg"
+
+Das heißt: **die .bat ist gestartet und vor der ersten Ausgabe wieder beendet
+worden.** Ab Version 1.1.1 passiert das nicht mehr still – der Starter startet
+sich bei Doppelklick selbst in einem Fenster, das **auch bei Fehlern offen
+bleibt** (`cmd /k`). Zusätzlich schreibt er `start_log.txt` neben die `.bat`.
+
+Wenn es bei dir weiterhin blitzt, hilft diese Reihenfolge:
+
+1. **ZIP vor dem Entpacken zulassen** (häufigste Ursache bei Downloads):
+   Rechtsklick auf die **ZIP-Datei** → *Eigenschaften* → unten bei *Sicherheit*
+   **„Zulassen"** anhaken (bzw. „Entsperren"/„Unblock") → *OK* → **erst dann**
+   entpacken. Dateien aus dem Internet sind markiert, und Windows blockt
+   `.bat`-Dateien dann gerne ohne sichtbare Meldung.
+   Alternativ in PowerShell:
+   ```powershell
+   Get-ChildItem "$env:USERPROFILE\Downloads" -Recurse -File | Unblock-File
+   ```
+2. **Nicht aus der ZIP-Vorschau starten.** Die Datei muss in einem normalen
+   Ordner liegen (der Starter erkennt einen Temp-Ordner und sagt es dir).
+3. **Fehlermeldung sichtbar machen** – in einem eigenen Fenster, das offen
+   bleibt:
+   * `Win + R` → `cmd` → Enter
+   * `cd /d "C:\Pfad\zu\deinem\Ordner"`
+   * `ArenaStudioConnector.bat /console` → Enter
+   Jetzt steht die Meldung da. Alternativ **ArenaStudioConnector-Konsole.bat**
+   doppelklicken.
+4. **Diagnose.bat** doppelklicken. Sie ändert nichts, schreibt aber
+   `diagnose_log.txt` in den Ordner: Windows-Version, ob Python gefunden wird,
+   ob `tkinter` da ist, die Dateien im Ordner und die Ausgabe von
+   `--check`. Diese Datei einfach mitschicken.
+5. Wenn selbst die Diagnose nur blitzt: Dann blockiert sehr wahrscheinlich
+   **Virenscanner, AppLocker oder eine Firmen-Richtlinie** `.bat`-Dateien.
+   Der Connector lässt sich auch **ganz ohne .bat** starten:
+   ```powershell
+   cd "C:\Pfad\zu\deinem\Ordner"
+   python arena_studio_connector.py --check
+   python arena_studio_connector.py
+   ```
 
 ## 🆘 Häufige Fragen / Probleme
 
@@ -206,6 +249,7 @@ kleine GUI und nicht nur einen Copy-Befehl.
 |---|---|
 | `ArenaStudioConnector.bat` | **Starter** – doppelklicken (Python-Suche, Prüfungen, App-Start) |
 | `ArenaStudioConnector-Konsole.bat` | gleicher Start, aber mit Konsolenfenster (Diagnose) |
+| `Diagnose.bat` | schreibt `diagnose_log.txt` (Python, tkinter, Dateien, `--check`) – für die Fehlersuche |
 | `arena_studio_connector.py` | Komplette App (GUI + Bridge + Tunnel + Prompt-Generator) |
 | `VERSION` | Version für `/version` – `build_zip.py` prüft, dass sie zu `APP_VERSION` passt |
 | `plugin/ArenaBridgePlugin.lua` | Roblox-Studio-Plugin – wird beim App-Start **automatisch** nach `%LOCALAPPDATA%\Roblox\Plugins` installiert |

@@ -97,6 +97,22 @@ jobs:
           }
           if ($fehler.Count -gt 0) { throw "Starter-Test fehlgeschlagen bei: $($fehler -join ', ')" }
 
+      - name: Diagnose.bat schreibt ein vollstaendiges Log (Fehlersuche)
+        shell: pwsh
+        run: |
+          if (Test-Path diagnose_log.txt) { Remove-Item diagnose_log.txt }
+          cmd /c "Diagnose.bat < nul" | Out-Null
+          if (-not (Test-Path diagnose_log.txt)) { throw "Diagnose.bat hat kein Log geschrieben" }
+          $log = Get-Content diagnose_log.txt -Raw
+          Write-Host $log
+          foreach ($needle in @('Arena Studio Connector - Diagnose', '--- Dateien',
+                                'OK    arena_studio_connector.py', '--- Python',
+                                'Systemcheck', '[OK] Python')) {
+            if ($log -notmatch [regex]::Escape($needle)) {
+              throw "diagnose_log.txt unvollstaendig - fehlt: $needle"
+            }
+          }
+
       - name: "Studio-Plugin landet automatisch im Roblox-Plugin-Ordner (/plugin)"
         shell: pwsh
         run: |
@@ -165,3 +181,4 @@ jobs:
           path: |
             bat-smoke.txt
             headless.err
+            diagnose_log.txt

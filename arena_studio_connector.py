@@ -40,9 +40,12 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 APP_NAME = "Arena Studio Connector"
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.1.1"
 DEFAULT_PORT = 8765
 MIN_PYTHON = (3, 9)
+GUI_FLAG = "gui_gestartet.tmp"      # Signal an den .bat-Starter: Fenster ist offen
+START_LOG = "start_log.txt"         # Log des Starters (wird von der .bat geschrieben)
+ERROR_LOG = "last_error.log"        # Log bei Abstürzen
 TUNNEL_RE = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com", re.I)
 
 # --------------------------------------------------------------------------- #
@@ -651,11 +654,27 @@ def plugin_status(port: int, token: str) -> tuple[bool, str]:
 # GUI
 # --------------------------------------------------------------------------- #
 
+def gui_flag_path() -> Path:
+    """Datei, die der .bat-Starter abwartet (Beweis: Fenster ist wirklich offen)."""
+    return app_dir() / GUI_FLAG
+
+
+def clear_stale_logs() -> None:
+    """Alte Fehler-/Signaldateien wegräumen, damit die .bat eindeutig erkennt,
+    ob DIESER Start geklappt hat oder abgestürzt ist."""
+    for name in (ERROR_LOG,):
+        try:
+            (app_dir() / name).unlink()
+        except OSError:
+            pass
+
+
 def run_gui():
     import tkinter as tk
     from tkinter import messagebox, ttk
 
     cfg = load_config()
+    clear_stale_logs()
     bridge = Bridge(cfg, token=ensure_bridge_token(cfg))
     tunnel = Tunnel()
     state = {"places": [], "running": False}
@@ -844,7 +863,19 @@ def run_gui():
 
     render_places()
     auto_install_async()          # Plugin kommt ohne Klick in den Plugin-Ordner
-    root.mainloop()
+
+    # Signal für den .bat-Starter: Ab hier laeuft die GUI wirklich.
+    try:
+        gui_flag_path().write_text(str(os.getpid()), encoding="utf-8")
+    except OSError:
+        pass
+    try:
+        root.mainloop()
+    finally:
+        try:
+            gui_flag_path().unlink()
+        except OSError:
+            pass
 
 
 def main() -> int:
@@ -1046,7 +1077,7 @@ def run_check() -> int:
 # --------------------------------------------------------------------------- #
 
 def crash_log_path() -> Path:
-    return app_dir() / "last_error.log"
+    return app_dir() / ERROR_LOG
 
 
 def report_crash(exc: BaseException) -> int:

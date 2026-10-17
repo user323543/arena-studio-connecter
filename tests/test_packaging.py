@@ -61,6 +61,57 @@ class BatDateienTest(unittest.TestCase):
                             f"(sonst zeigt %~dp0 nach dem shift woanders hin)")
 
 
+class SicherheitsnetzTest(unittest.TestCase):
+    """Regression: "Fenster blitzt nur kurz auf, dann ist es weg".
+
+    Bei Doppelklick (ohne Argumente) muss sich der Starter in einem cmd /k
+    Fenster neu starten, damit jede Fehlermeldung sichtbar bleibt. Mit
+    Argumenten (CI, /version, /check ...) darf er das NICHT tun, sonst waere
+    die Ausgabe weg.
+    """
+
+    def setUp(self):
+        self.text = (ROOT / "ArenaStudioConnector.bat").read_text(encoding="ascii")
+
+    def test_neustart_in_offenem_fenster_bei_doppelklick(self):
+        self.assertIn('if "%~1"=="" (', self.text)
+        self.assertIn('cmd /k ""%~f0" --in-window"', self.text)
+        self.assertIn("--in-window", self.text)
+
+    def test_argumente_starten_kein_zweites_fenster(self):
+        # Der Neustart haengt an %~1 == "" - mit Argumenten laeuft alles direkt.
+        guard = self.text[self.text.index('if "%~1"=="" ('):]
+        guard = guard[:guard.index(")") + 1]
+        self.assertIn("--in-window", guard)
+        self.assertIn("exit /b", guard)
+        self.assertIn(":opt_inwindow", self.text)
+
+    def test_fenster_schliesst_sich_nur_bei_erfolg(self):
+        self.assertIn(":close_window", self.text)
+        self.assertIn("if defined IN_WINDOW goto close_window", self.text)
+
+    def test_wartet_auf_lebenszeichen_der_app(self):
+        # Nicht blind "gestartet" melden, sondern warten, bis die GUI wirklich da ist
+        self.assertIn("gui_gestartet.tmp", self.text)
+        self.assertIn(":wait_gui", self.text)
+        self.assertIn("goto launch_failed", self.text)
+
+    def test_schreibt_startlog(self):
+        self.assertIn("start_log.txt", self.text)
+
+    def test_erkennt_start_aus_der_zip_vorschau(self):
+        self.assertIn(":warn_temp", self.text)
+        self.assertIn("Alle extrahieren", self.text)
+
+    def test_diagnose_bat_ist_dabei(self):
+        diag = (ROOT / "Diagnose.bat").read_bytes()
+        self.assertIn(b"diagnose_log.txt", diag)
+        self.assertIn(b"pause", diag)
+        self.assertIn(b"\r\n", diag)
+        self.assertIn("Diagnose.bat", [n for _, n in build_zip.PAYLOAD])
+        self.assertIn("Diagnose.bat", build_zip.BAT_FILES)
+
+
 class StarterTest(unittest.TestCase):
     def setUp(self):
         self.text = (ROOT / LAUNCHER).read_text(encoding="ascii")
@@ -97,6 +148,13 @@ class StarterTest(unittest.TestCase):
     def test_startet_gui_konsolenlos(self):
         self.assertIn("pythonw.exe", self.text)
         self.assertIn("start \"\"", self.text)
+
+    def test_app_schreibt_lebenszeichen(self):
+        # Die .bat wartet auf diese Datei - deshalb muss die App sie anlegen.
+        source = (ROOT / "arena_studio_connector.py").read_text(encoding="utf-8")
+        self.assertIn("GUI_FLAG", source)
+        self.assertIn("gui_flag_path().write_text", source)
+        self.assertIn("gui_flag_path().unlink()", source)
 
 
 class PaketTest(unittest.TestCase):

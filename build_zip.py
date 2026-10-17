@@ -30,6 +30,7 @@ ZIP_STAMP = (1980, 1, 1, 0, 0, 0)  # feste Zeitstempel => reproduzierbares ZIP
 PAYLOAD: list[tuple[str, str]] = [
     ("ArenaStudioConnector.bat", "ArenaStudioConnector.bat"),
     ("ArenaStudioConnector-Konsole.bat", "ArenaStudioConnector-Konsole.bat"),
+    ("Diagnose.bat", "Diagnose.bat"),
     ("arena_studio_connector.py", "arena_studio_connector.py"),
     ("VERSION", "VERSION"),
     ("plugin/ArenaBridgePlugin.lua", "plugin/ArenaBridgePlugin.lua"),
