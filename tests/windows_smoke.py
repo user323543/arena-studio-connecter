@@ -157,4 +157,11 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except SystemExit:
+        raise
+    except BaseException:  # nie ohne Meldung sterben
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)

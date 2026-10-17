@@ -150,19 +150,16 @@ jobs:
           Write-Host "OK: /newtoken rotiert und aktualisiert das Plugin"
 
       - name: "Starter-Standard: Token + URL anzeigen, Prompt in die Zwischenablage"
-        shell: pwsh
+        shell: cmd
         run: |
-          $out = python tests/windows_smoke.py 2>&1 | Out-String
-          $code = $LASTEXITCODE
-          Write-Host $out
-          Set-Content -Path windows_smoke.log -Value $out -Encoding utf8
-          if ($code -ne 0) {
-            # letzte Zeilen sind die interessante Fehlermeldung
-            $kurz = ($out -replace "\r?\n", " | ")
-            if ($kurz.Length -gt 950) { $kurz = $kurz.Substring($kurz.Length - 950) }
-            Write-Host "::error title=Smoke::$kurz"
-            exit $code
-          }
+          rem Ausgabe ueber cmd umleiten - robuster als PowerShell-Pipelines
+          python tests/windows_smoke.py > windows_smoke.log 2>&1
+          set RC=%errorlevel%
+          type windows_smoke.log
+          if not "%RC%"=="0" (
+            powershell -NoProfile -Command "$t=(Get-Content windows_smoke.log -Raw) -replace '\r?\n',' | '; if($t.Length -gt 950){$t=$t.Substring($t.Length-950)}; Write-Host \"::error title=Smoke::$t\""
+            exit /b %RC%
+          )
 
       - name: Smoketest-Ausgabe als Artifact
         if: always()
