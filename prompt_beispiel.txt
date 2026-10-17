@@ -1,19 +1,26 @@
-So sieht der kopierte Prompt aus (Beispiel mit Platzhaltern – die echte Version
-erzeugt die App automatisch pro Place mit deiner Tunnel-URL + deinem Token):
-------------------------------------------------------------------------------
-Verbinde dich mit meinem Roblox Studio und arbeite NUR an dieser Place:
-- Place / Experience: <Name>
-- PlaceId: <PlaceId>
-- UniverseId (Experience-Id): <UniverseId>
+So sieht der Prompt aus, der beim Start in die Zwischenablage kopiert wird
+(die echte Version enthaelt deine Tunnel-URL und deinen Token):
 
-VERBINDUNGSDATEN (streng vertraulich, nirgends posten/loggen):
+Verbinde dich mit meinem Roblox Studio ueber meine lokale Bridge und arbeite dort.
+
+DIE PLACE:
+- Welche Place offen ist, liest du aus /api/status (Feld studio.placeId /
+  studio.name). Arbeite nur an dieser Place.
+
+VERBINDUNGSDATEN (streng vertraulich, nirgends posten oder loggen):
 - Bridge-URL (Cloudflare Tunnel): https://<xxx>.trycloudflare.com
 - Token: <Token>
-... (danach folgt in der echten Version die komplette Anleitung für Arena AI:
-     Verbindungsprüfung, alle Kommandos, Curl-Beispiele, Open-Cloud-Proxy für
-     GamePässe/Dev-Produkte und die Sicherheitsregeln – siehe
-     build_prompt() in arena_studio_connector.py)
-------------------------------------------------------------------------------
-Gestartet wird die App mit ArenaStudioConnector.bat (ZIP entpacken, doppel-
-klicken) – sie zeigt deine Places und kopiert den Prompt passend zur ange-
-klickten Place. Eine EXE zum Installieren gibt es bewusst nicht mehr.
+- (Lokal im Studio-Plugin eingetragen: http://127.0.0.1:8765 - das brauchst du nicht.)
+
+MEINE AUFGABE - das sollst du in Studio machen:
+- <HIER EINTRAGEN, was gemacht werden soll>
+  Beispiele: "Baue ein Spawn-Gebaeude mit 3 Etagen und Lichtern."
+            "Erstelle einen GamePass 'VIP' fuer 100 Robux."
+
+... (danach folgt die komplette Anleitung fuer Arena AI: Verbindungspruefung,
+    alle Kommandos mit Curl-Beispielen, Open-Cloud-Proxy fuer GamePaesse/
+    Dev-Produkte und die Sicherheitsregeln - siehe build_prompt() in
+    arena_studio_connector.py)
+
+Wichtig: Im Studio-Plugin werden die LOKALE URL (http://127.0.0.1:8765) und
+derselbe Token eingetragen. Die Tunnel-URL braucht nur Arena AI.

@@ -11,8 +11,10 @@ if "%~1"=="" (
 )
 rem ===========================================================================
 rem  Arena Studio Connector - Starter fuer Windows
-rem  Doppelklick genuegt: die Datei sucht Python, prueft alles und startet die App.
-rem  Optionen: /console  /headless  /check  /plugin  /newtoken  /unblock  /help
+rem  Doppelklick genuegt: Bridge + Tunnel starten, Token/URL anzeigen und den
+rem  Prompt fuer Arena AI in die Zwischenablage kopieren. Es oeffnet sich KEIN
+rem  App-Fenster (das gibt es optional mit /gui).
+rem  Optionen: /gui  /check  /places  /plugin  /newtoken  /unblock  /version  /help
 rem ===========================================================================
 chcp 65001 >nul 2>&1
 setlocal EnableExtensions EnableDelayedExpansion
@@ -32,7 +34,8 @@ set "ERRLOGPATH=%APPDIR%%ERRLOG%"
 set "VERSIONFILE=%APPDIR%VERSION"
 set "STARTLOG=%APPDIR%start_log.txt"
 set "GUIFLAG=%APPDIR%gui_gestartet.tmp"
-set "MODE=gui"
+rem Standard = Konsole + Zwischenablage, KEIN App-Fenster (optional /gui)
+set "MODE=serve"
 set "PY_CMD="
 set "PY_ARGS="
 set "PY_EXE="
@@ -54,11 +57,14 @@ rem --------------------------------------------------------------------------
 :argloop
 if "%~1"=="" goto args_done
 set "A=%~1"
+if /i "!A!"=="/gui"      goto opt_gui
 if /i "!A!"=="/console"  goto opt_console
+if /i "!A!"=="/headless" goto opt_headless
 if /i "!A!"=="/headless" goto opt_headless
 if /i "!A!"=="/check"    goto opt_check
 if /i "!A!"=="/plugin"   goto opt_plugin
 if /i "!A!"=="/newtoken" goto opt_newtoken
+if /i "!A!"=="/places"   goto run_places
 if /i "!A!"=="/unblock"  goto opt_unblock
 if /i "!A!"=="/version"  goto opt_version
 if /i "!A!"=="/help"     goto help
@@ -67,7 +73,7 @@ if /i "!A!"=="--help"    goto help
 if /i "!A!"=="--in-window" goto opt_inwindow
 echo.
 echo [!] Unbekannte Option: !A!
-echo     Erlaubt sind: /console  /headless  /check  /plugin  /newtoken  /unblock  /help
+echo     Erlaubt sind: /gui  /check  /places  /plugin  /newtoken  /unblock  /help
 goto help
 
 :opt_inwindow
@@ -75,13 +81,19 @@ set "IN_WINDOW=1"
 shift
 goto argloop
 
+:opt_gui
+set "MODE=gui"
+shift
+goto argloop
+
 :opt_console
-set "MODE=console"
+set "MODE=serve"
 shift
 goto argloop
 
 :opt_headless
-set "MODE=headless"
+rem Alias: /headless = Konsole + Zwischenablage (wie der Standard)
+set "MODE=serve"
 shift
 goto argloop
 
@@ -207,7 +219,7 @@ echo.
 rem GUI pruefen - nur noetig, wenn ein Fenster geoeffnet werden soll.
 rem Bei /check und /headless ueberspringen: die Diagnose soll auch dann laufen,
 rem wenn tkinter fehlt (genau dann braucht man sie naemlich).
-if /i "!MODE!"=="headless" goto skip_tk
+if /i "!MODE!"=="serve"   goto skip_tk
 if /i "!MODE!"=="check"    goto skip_tk
 if /i "!MODE!"=="plugin"   goto skip_tk
 if /i "!MODE!"=="newtoken" goto skip_tk
@@ -222,13 +234,12 @@ if errorlevel 1 goto code_fail
 echo [OK] App-Code geladen.
 
 if /i "!MODE!"=="check"    goto run_check
-if /i "!MODE!"=="headless" goto run_headless
-if /i "!MODE!"=="console"  goto run_console
+if /i "!MODE!"=="serve"    goto run_serve
 if /i "!MODE!"=="plugin"   goto run_plugin
 if /i "!MODE!"=="newtoken" goto run_newtoken
 
 rem --------------------------------------------------------------------------
-rem  Standard: GUI ohne Konsolenfenster
+rem  Nur bei /gui: App-Fenster ohne Konsole starten
 rem --------------------------------------------------------------------------
 if not defined PYW_EXE goto run_console_note
 
@@ -258,12 +269,9 @@ echo [i] Fertig. Wenn kein Fenster erscheint:
 echo     ArenaStudioConnector-Konsole.bat doppelklicken - dort siehst du die
 echo     genaue Fehlermeldung.
 echo.
-echo [i] Naechste Schritte in der App:
-echo     1. Roblox-Username eintragen  -^>  "Places laden"
-echo     2. "Bridge + Tunnel starten"  -^>  warten bis die Tunnel-URL da ist
-echo     3. Roblox Studio neu starten - das Studio-Plugin wurde AUTOMATISCH
-echo        installiert (Ordner: %LOCALAPPDATA%\Roblox\Plugins)
-echo     4. Beim gewuenschten Spiel "Prompt kopieren"  -^>  bei Arena AI einfuegen
+echo [i] Das App-Fenster ist offen (optionaler Modus /gui).
+echo     Normalerweise reicht ein Doppelklick auf diese Datei - dann laeuft
+echo     alles in diesem Fenster, mit Token + URL und Prompt in der Zwischenablage.
 echo.
 goto end_ok
 
@@ -287,17 +295,30 @@ pause
 if not "!RC!"=="0" goto fail_no_pause
 goto end_ok
 
-:run_headless
-echo [i] Headless-Modus: nur Bridge + Cloudflare-Tunnel, kein Fenster.
-echo     Beenden mit Strg+C.
+:run_serve
 echo.
-"%PY_CMD%" %PY_ARGS% "%APPPATH%" --headless
+echo [i] Starte Bridge + Cloudflare-Tunnel.
+echo     Danach stehen hier Tunnel-URL und Token - der Prompt fuer Arena AI
+echo     landet automatisch in der Zwischenablage.
+echo     Fenster offen lassen! Beenden mit Strg+C.
 echo.
+"%PY_CMD%" %PY_ARGS% "%APPPATH%" --serve
+echo.
+echo [i] Bridge + Tunnel wurden beendet.
 pause
 goto end_ok
 
 :run_check
 "%PY_CMD%" %PY_ARGS% "%APPPATH%" --check
+set "RC=!errorlevel!"
+echo.
+pause
+if not "!RC!"=="0" goto fail_no_pause
+goto end_ok
+
+:run_places
+rem Places eines Users anzeigen: /places <Username>
+"%PY_CMD%" %PY_ARGS% "%APPPATH%" --places %2
 set "RC=!errorlevel!"
 echo.
 pause
@@ -365,7 +386,8 @@ echo [X] In deinem Python fehlt "tkinter" - damit kann kein Fenster geoeffnet
 echo     werden. Python einfach neu installieren und dabei die Option
 echo     "tcl/tk and IDLE" angehakt lassen.
 echo.
-echo     Alternativ ohne Fenster starten:  ArenaStudioConnector.bat /headless
+echo     Alternativ ohne Fenster starten:  ArenaStudioConnector.bat
+echo     (Standardmodus braucht kein tkinter)
 goto fail_wait
 
 :code_fail
@@ -443,12 +465,16 @@ echo ===========================================================================
 echo   Arena Studio Connector - Starter
 echo ===========================================================================
 echo.
-echo   Einfach doppelklicken  -  die App startet ohne Konsolenfenster.
+echo   Einfach doppelklicken:
+echo     - Bridge + Tunnel starten (dieses Fenster bleibt offen)
+echo     - Tunnel-URL + Token werden hier angezeigt
+echo     - der Prompt fuer Arena AI wird in die Zwischenablage kopiert
+echo     - im Studio-Plugin werden URL + Token eingetragen
 echo.
 echo   Optionen:
-echo     /console    App mit Konsolenfenster starten  -  zeigt alle Meldungen
+echo     /gui        Alte App mit Fenster starten (optional, braucht tkinter)
+echo     /places X   Places von Roblox-User X anzeigen (PlaceId/UniverseId)
 echo     /check      Systemcheck: Python, tkinter, Plugin, Port, cloudflared
-echo     /headless   Nur Bridge + Tunnel, ohne Fenster
 echo     /plugin     Studio-Plugin neu installieren (automatisch in den
 echo                 Roblox-Plugin-Ordner, ohne GUI)
 echo     /newtoken   Neuen Bridge-Token erzeugen und Plugin neu installieren

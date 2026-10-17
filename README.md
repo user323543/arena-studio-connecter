@@ -1,12 +1,18 @@
 # 🎮 Arena Studio Connector
 
-Verbinde **Arena AI mit deinem Roblox Studio**: Eine kleine Windows-App startet
-eine lokale Bridge + Cloudflare-Tunnel, zeigt deine Roblox-Places an und kopiert
-per Button einen fertigen Prompt. Den schickst du an Arena AI – Arena kann dann
-in deiner geöffneten Studio-Place arbeiten (Scripts lesen/schreiben, Objekte
-erstellen, Eigenschaften ändern, Luau ausführen) und über deine lokale Bridge
-sogar Creator-Dashboard-Aktionen anstoßen (GamePässe, Developer-Produkte,
-Badges, DataStores …), **ohne dass dein Roblox-API-Key deinen PC je verlässt.**
+Verbinde **Arena AI mit deinem Roblox Studio**: Ein Doppelklick auf eine `.bat`
+startet eine lokale Bridge + Cloudflare-Tunnel, **zeigt Tunnel-URL und Token im
+Fenster** und kopiert einen fertigen Prompt in die Zwischenablage. Den fügst du
+bei Arena AI ein, schreibst darunter, was gemacht werden soll – und trägst URL +
+Token einmal im **Studio-Plugin** ein. Danach kann Arena in deiner geöffneten
+Place arbeiten (Scripts lesen/schreiben, Objekte erstellen, Eigenschaften ändern,
+Luau ausführen) und über die Bridge sogar Creator-Dashboard-Aktionen anstoßen
+(GamePässe, Developer-Produkte, Badges, DataStores …), **ohne dass dein
+Roblox-API-Key deinen PC je verlässt.**
+
+> **Es öffnet sich kein App-Fenster (mehr).** Alles passiert im `.bat`-Fenster:
+> Token + URL stehen dort, der Prompt landet in der Zwischenablage. Die alte
+> GUI gibt es optional mit `ArenaStudioConnector.bat /gui`.
 
 > **Verteilung: ZIP + `.bat` – keine EXE.**
 > Es wird nichts kompiliert und nichts installiert: ZIP entpacken,
@@ -35,11 +41,46 @@ Der Starter erledigt alles Nötige:
 |---|---|
 | Sucht Python 3.9+ (`py`, `python`, typische Installationsordner, Store) | kein manuelles Suchen |
 | Bietet bei Bedarf die Installation über `winget` an | „Add to PATH"/„tcl/tk" wird automatisch richtig gesetzt |
-| Prüft `tkinter`, Plugin-Datei und lädt den Code vorab | Fehler erscheinen im Klartext statt still |
-| Startet die App über `pythonw.exe` | Fenster-App, ohne schwarzes Konsolenfenster |
-| Schreibt `last_error.log` + zeigt bei Startfehlern die Ursache | nichts scheitert lautlos |
+| Lädt den Code vorab und prüft die Plugin-Datei | Fehler erscheinen im Klartext statt still |
+| Startet Bridge + Tunnel **im `.bat`-Fenster** | Token + URL stehen direkt da, kein extra App-Fenster |
+| Kopiert den Prompt in die Zwischenablage und speichert `prompt.txt` | einfügen bei Arena AI ohne Suchen |
+| Schreibt `start_log.txt` + zeigt bei Fehlern die Ursache | nichts scheitert lautlos |
 
-### 3. (Optional, nur für Dashboard-Aktionen) Roblox API-Key eintragen
+### 3. So läuft es ab (der eigentliche Ablauf)
+
+```
+1. Doppelklick auf ArenaStudioConnector.bat
+      -> Fenster zeigt:  Tunnel-URL  +  Token  +  lokale URL
+      -> Prompt (mit URL, Token und Platz für deine Aufgabe) ist in der Zwischenablage
+      -> Fenster OFFEN LASSEN (das ist die Bridge)
+
+2. Roblox Studio öffnen -> Plugins-Tab -> ArenaBridge
+      Bridge-URL = http://127.0.0.1:8765        (die "lokale URL" aus der .bat)
+      Token      = ...                           (der Token aus der .bat)
+      -> "Verbinden" klicken   (wird für das nächste Mal gespeichert)
+
+3. Bei Arena AI einfügen (Strg+V) und darunter schreiben, was gemacht werden soll:
+      "Baue ein Spawn-Gebäude mit 3 Etagen."
+      "Erstelle einen GamePass 'VIP' für 100 Robux."
+   Die Zeile "<HIER EINTRAGEN, was gemacht werden soll>" im Prompt ersetzt du
+   einfach durch deine Aufgabe.
+
+4. Fertig. Arena verbindet sich über den Tunnel mit deiner Bridge und arbeitet
+   in der offenen Place. Beenden: im .bat-Fenster Strg+C.
+```
+
+**Wichtig zu den zwei Adressen**
+
+| Adresse | Wofür | Wo eintragen |
+|---|---|---|
+| `http://127.0.0.1:8765` | verbindet das **Studio-Plugin** mit deiner Bridge auf demselben PC | im Plugin-Feld *Bridge-URL* |
+| `https://….trycloudflare.com` | damit **Arena AI** von außen an deine Bridge kommt | nur im Prompt (automatisch) |
+
+Der **Token** ist beide Male derselbe. `prompt.txt` liegt zusätzlich neben der
+`.bat` – falls das Kopieren in die Zwischenablage mal nicht klappt, kannst du
+den Text von dort nehmen.
+
+### 4. (Optional, nur für Dashboard-Aktionen) Roblox API-Key eintragen
 Für reines Arbeiten **in Studio** brauchst du **keinen** Key.
 Nur wenn Arena z. B. GamePässe/Developer-Produkte erstellen soll:
 
@@ -47,64 +88,32 @@ Nur wenn Arena z. B. GamePässe/Developer-Produkte erstellen soll:
 2. Das ausführliche Tutorial **in der `.env.example`** befolgen
    (Key auf <https://create.roblox.com/dashboard/credentials> erstellen,
    dort steht auch exakt, **welche Berechtigungen wofür** nötig sind).
-3. Key in die `.env` eintragen. Die App liest ihn auch direkt aus dem
-   Key-Feld in der GUI. Alternativ `config.example.json` → `config.json`
-   für Username/Port.
+3. Key in die `.env` eintragen.
 
 ⚠️ **Der Key ist wie ein Passwort.** Niemals an Arena schicken, niemals
 öffentlich posten. `.env` und `config.json` stehen in `.gitignore`.
 
-### 4. App benutzen
-1. Roblox-Username eintragen → **„Places laden"**.
-2. **„Bridge + Tunnel starten"** → kurz warten, bis die Tunnel-URL erscheint
-   (die App lädt `cloudflared` bei Bedarf selbst von GitHub herunter).
-3. **Roblox Studio neu starten**, die gewünschte Place öffnen, im
-   Plugin-Toolbar-Button **„ArenaBridge"** klicken und beim ersten Mal den
-   Zugriff auf `127.0.0.1` erlauben. Das Plugin selbst musst du **nicht**
-   installieren – das erledigt die App beim Start automatisch
-   (siehe unten).
-4. In der App beim gewünschten Spiel auf **„📋 Prompt kopieren"** klicken.
-5. Prompt bei **Arena AI einfügen**, danach einfach sagen, was Arena in
-   Studio machen soll (z. B. „Baue ein Spawn-Gebäude" oder „Erstelle einen
-   GamePass für 100 Robux").
-
-### 5. Studio-Plugin: wird automatisch installiert 🔌
-Beim App-Start schreibt die App `ArenaBridgePlugin.lua` automatisch in den
-Roblox-Plugin-Ordner – mit der lokalen Bridge-Adresse (`127.0.0.1:<Port>`)
-und dem Bridge-Token:
-
-```
-%LOCALAPPDATA%\Roblox\Plugins\ArenaBridgePlugin.lua
-```
-
-- Der **Bridge-Token wird lokal gemerkt** (`config.json`, steht in
-  `.gitignore`). Deshalb genügt die Installation **einmal** – bei jedem
-  weiteren Start prüft die App nur, ob alles aktuell ist.
-- Ist Studio aus dem **Microsoft Store** installiert, wird der Paketordner
-  (`...\Packages\ROBLOXCORPORATION.ROBLOXSTUDIO*\LocalState\Plugins`)
-  zusätzlich mitgenommen, falls vorhanden.
-- Anderer Ordner? Umgebungsvariable `ARENA_PLUGIN_DIR` setzen.
-- Ohne GUI: `ArenaStudioConnector.bat /plugin`
-- Token verloren/weitergegeben? `ArenaStudioConnector.bat /newtoken`
-  erzeugt einen neuen Token und schreibt das Plugin neu (der alte wird
-  ungültig).
-- In der App steht in der Statuszeile, was passiert ist
-  (`installiert`, `aktuell` oder eine Fehlermeldung).
-
-Token & Tunnel-URL gelten nur, solange die App läuft. Zum Trennen einfach
-die App schließen / „Stoppen" klicken.
+### 5. Studio-Plugin 🔌
+Das Plugin wird **automatisch** in den Roblox-Plugin-Ordner geschrieben
+(`%LOCALAPPDATA%\Roblox\Plugins\ArenaBridgePlugin.lua`), vorbelegt mit
+lokaler URL und Token. Beim ersten Öffnen in Studio trägst du URL + Token
+ein (falls die Vorbelegung fehlt) und klickst **„Verbinden"** – beides wird
+gespeichert und beim nächsten Mal automatisch verwendet. Details und
+Sonderfälle (Store-Version von Studio, eigener Ordner, Token wechseln) siehe
+unten.
 
 ---
 
 ## 🧰 Starter-Optionen (für den Fall der Fälle)
 
 ```powershell
-ArenaStudioConnector.bat              # normale App (Fenster, ohne Konsole)
-ArenaStudioConnector-Konsole.bat      # gleiches, aber mit allen Meldungen
+ArenaStudioConnector.bat              # Standard: Bridge + Tunnel, Token/URL, Prompt in der Zwischenablage
+ArenaStudioConnector.bat /gui         # optionale App mit Fenster (braucht tkinter)
+ArenaStudioConnector.bat /places Max  # Places von Roblox-User "Max" mit PlaceId/UniverseId
 ArenaStudioConnector.bat /check       # Systemcheck: Python, tkinter, Plugin, Port, cloudflared
 ArenaStudioConnector.bat /plugin      # Studio-Plugin jetzt installieren/aktualisieren
 ArenaStudioConnector.bat /newtoken    # neuen Bridge-Token + Plugin neu schreiben
-ArenaStudioConnector.bat /headless    # nur Bridge + Tunnel, ohne Fenster
+ArenaStudioConnector.bat /headless    # wie Standard (Alias)
 ArenaStudioConnector.bat /unblock     # Windows-Sperre „Datei aus dem Internet" entfernen
 ArenaStudioConnector.bat /help        # Hilfe anzeigen
 ArenaStudioConnector.bat /version     # Version anzeigen
@@ -122,6 +131,9 @@ unbemerkt „durchblitzen“.
 ## 🔁 So funktioniert es
 
 ```
+ArenaStudioConnector.bat ──► Bridge (127.0.0.1:8765) + Tunnel-URL + Token im Fenster
+                          └─► Prompt in die Zwischenablage (prompt.txt)
+
 Arena AI ──HTTPS──► Cloudflare Tunnel ──► Bridge (dein PC, 127.0.0.1:8765)
                                               │  ▲
                           Open Cloud (lokal,  │  │ pollt lokal
@@ -224,6 +236,12 @@ kein echtes Python daraus und bietet stattdessen die Installation an.
 **„Port 8765 ist belegt."**
 Meist läuft die App schon in einem anderen Fenster. Sonst in `config.json`
 einen anderen Port eintragen (z. B. `8766`).
+
+**„Ich will die alte App mit Places-Liste."**
+`ArenaStudioConnector.bat /gui` (oder `ArenaStudioConnector-Konsole.bat`).
+Für den normalen Ablauf brauchst du sie nicht: `/places <Username>` zeigt
+PlaceId/UniverseId in der Konsole, und welche Place offen ist, liest Arena
+automatisch aus `/api/status`.
 
 **„Wo ist das Studio-Plugin nach dem Neustart hin?"**
 Klick in Studio auf den Toolbar-Button **„ArenaBridge"**. Findest du ihn

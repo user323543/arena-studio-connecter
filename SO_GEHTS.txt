@@ -14,16 +14,20 @@
      automatisch installieren darf (winget) - oder oeffnet die Download-Seite.
    - Die App oeffnet sich als Fenster (ohne Konsolenfenster).
 
-3. IN DER APP
-   a) Roblox-Username eintragen -> "Places laden"
-   b) "Bridge + Tunnel starten" -> warten, bis die Tunnel-URL erscheint
-   c) Roblox Studio neu starten, die gewuenschte Place oeffnen, im
-      Toolbar-Button "ArenaBridge" klicken und beim ersten Mal den Zugriff
-      auf 127.0.0.1 erlauben
-      -> Das Studio-Plugin wird AUTOMATISCH installiert, und zwar nach
-         %LOCALAPPDATA%\Roblox\Plugins\ArenaBridgePlugin.lua
-         (kein Klick noetig, passiert bei jedem App-Start)
-   d) Beim gewuenschten Spiel "Prompt kopieren" -> bei Arena AI einfuegen
+3. SO LAEUFT ES AB
+   a) Doppelklick auf ArenaStudioConnector.bat
+      -> im Fenster stehen Tunnel-URL, Token und die lokale URL
+      -> der Prompt fuer Arena AI liegt in der Zwischenablage
+      -> Fenster OFFEN LASSEN (das ist die Bridge)
+   b) Roblox Studio -> Plugins-Tab -> ArenaBridge
+      -> Bridge-URL = http://127.0.0.1:8765   (lokale URL aus dem Fenster)
+      -> Token      = ...                      (Token aus dem Fenster)
+      -> "Verbinden" klicken (wird gespeichert, naechstes Mal automatisch)
+      (Das Plugin wird automatisch nach
+       %LOCALAPPDATA%\Roblox\Plugins\ArenaBridgePlugin.lua installiert)
+   c) Bei Arena AI einfuegen (Strg+V) und darunter schreiben, was gemacht
+      werden soll - oder die Zeile "<HIER EINTRAGEN ...>" ersetzen
+   d) Beenden: im .bat-Fenster Strg+C
 
 4. OPTIONAL: Creator-Dashboard-Aktionen (GamePaesse, Dev-Produkte, Badges ...)
    Dafuer braucht Arena einen Roblox Open-Cloud API-Key. Der Key bleibt IMMER
@@ -39,7 +43,8 @@ PROBLEME?
      - Win+R -> cmd -> cd /d "<Ordner>" -> ArenaStudioConnector.bat /console
    Diagnose.bat                      -> schreibt diagnose_log.txt mit allen
                                         Infos (Python, tkinter, Dateien, --check)
-   ArenaStudioConnector-Konsole.bat  -> gleicher Start, aber mit allen Meldungen
+   ArenaStudioConnector.bat /gui     -> optionale App mit Fenster (Places-Liste)
+   ArenaStudioConnector.bat /places X-> Places von Roblox-User X anzeigen
    ArenaStudioConnector.bat /check   -> Systemcheck: Python, tkinter, Plugin,
                                         Port, cloudflared, Plugin-Ordner
    ArenaStudioConnector.bat /plugin  -> Studio-Plugin sofort (neu) installieren

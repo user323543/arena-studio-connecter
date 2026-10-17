@@ -23,3 +23,6 @@ release/
 start_log.txt
 diagnose_log.txt
 gui_gestartet.tmp
+
+# Prompt fuer Arena AI (wird bei jedem Start neu erzeugt)
+prompt.txt

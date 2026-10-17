@@ -29,6 +29,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import traceback
@@ -40,7 +41,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 APP_NAME = "Arena Studio Connector"
-APP_VERSION = "1.1.1"
+APP_VERSION = "1.2.0"
 DEFAULT_PORT = 8765
 MIN_PYTHON = (3, 9)
 GUI_FLAG = "gui_gestartet.tmp"      # Signal an den .bat-Starter: Fenster ist offen
@@ -430,27 +431,58 @@ DOCS = {
 # Prompt bauen
 # --------------------------------------------------------------------------- #
 
-def build_prompt(tunnel_url: str, token: str, place: dict | None) -> str:
+def build_prompt(tunnel_url: str, token: str, place: dict | None = None,
+                 local_url: str | None = None) -> str:
+    """Baut den Text, der bei Arena AI eingefügt wird.
+
+    Enthält Verbindungsdaten (Tunnel-URL + Token), die komplette Anleitung und
+    am Ende einen klar markierten Platz für die eigentliche Aufgabe.
+    """
     place = place or {}
-    name = place.get("name") or place.get("placeName") or "(noch keine Place gewählt)"
+    name = place.get("name") or place.get("placeName")
     pid, uid = place.get("placeId"), place.get("universeId")
-    return f"""Verbinde dich mit meinem Roblox Studio und arbeite NUR an dieser Place:
+    local_url = local_url or "http://127.0.0.1:8765"
 
-- Place / Experience: {name}
-- PlaceId: {pid}
-- UniverseId (Experience-Id): {uid}
+    if pid:
+        place_block = (f"- Place / Experience: {name}\n"
+                       f"- PlaceId: {pid}\n"
+                       f"- UniverseId (Experience-Id): {uid}")
+        place_rule = f"- Arbeite ausschließlich an PlaceId {pid} / UniverseId {uid}."
+        place_check = (f'   Erwartet: "studio_connected": true und studio.placeId == {pid}.\n'
+                       f'   Wenn studio_connected false ist oder die PlaceId nicht übereinstimmt: STOPPE,\n'
+                       f'   sag mir kurz Bescheid und ändere NICHTS.')
+    else:
+        place_block = ("- Welche Place offen ist, liest du aus /api/status (Feld studio.placeId /\n"
+                       "  studio.name). Arbeite nur an dieser Place.")
+        place_rule = "- Arbeite ausschließlich an der Place, die laut /api/status offen ist."
+        place_check = ('   Erwartet: "studio_connected": true.\n'
+                       '   Wenn studio_connected false ist: STOPPE, sag mir kurz Bescheid (ich muss\n'
+                       '   die Place in Roblox Studio öffnen und im Plugin "Verbinden" klicken)\n'
+                       '   und ändere NICHTS.')
 
-VERBINDUNGSDATEN (streng vertraulich, nirgends posten/loggen):
+    uid_text = uid if uid else "<UniverseId aus /api/status>"
+
+    return f"""Verbinde dich mit meinem Roblox Studio über meine lokale Bridge und arbeite dort.
+
+DIE PLACE:
+{place_block}
+
+VERBINDUNGSDATEN (streng vertraulich, nirgends posten oder loggen):
 - Bridge-URL (Cloudflare Tunnel): {tunnel_url}
 - Token: {token}
+- (Lokal im Studio-Plugin eingetragen: {local_url} – das brauchst du nicht.)
 
-SO NUTZT DU DIE VERBINDUNG (Arena AI → lies das genau und führe es aus):
+MEINE AUFGABE – das sollst du in Studio machen:
+- <HIER EINTRAGEN, was gemacht werden soll>
+  Beispiele: "Baue ein Spawn-Gebäude mit 3 Etagen und Lichtern."
+            "Erstelle einen GamePass 'VIP' für 100 Robux."
+            "Lies das Script game.ServerScriptService.Main und erkläre es mir."
+  Bis hier etwas steht: Frage mich zuerst, was ich machen möchte, und ändere nichts.
+
+SO NUTZT DU DIE VERBINDUNG:
 1. Prüfe zuerst die Verbindung:
    curl -s "{tunnel_url}/api/status" -H "Authorization: Bearer {token}"
-   Erwartet: "studio_connected": true und studio.placeId == {pid}.
-   Wenn studio_connected false ist oder die PlaceId nicht übereinstimmt: STOPPE,
-   sag mir kurz Bescheid (ich muss die Place in Roblox Studio öffnen / das Plugin
-   aktivieren) und ändere NICHTS.
+{place_check}
 2. Jede Anfrage braucht den Header: Authorization: Bearer {token}
 3. In Studio etwas tun – Kommandos an das Studio-Plugin:
    curl -s -X POST "{tunnel_url}/api/command" \\
@@ -466,21 +498,21 @@ SO NUTZT DU DIE VERBINDUNG (Arena AI → lies das genau und führe es aus):
    auf meinem PC – du bekommst ihn NIE. Rufe stattdessen auf:
    curl -s -X POST "{tunnel_url}/api/roblox/open-cloud" \\
      -H "Authorization: Bearer {token}" -H "Content-Type: application/json" \\
-     -d '{{"method":"GET","path":"/cloud/v2/universes/{uid}","body":null}}'
+     -d '{{"method":"GET","path":"/cloud/v2/universes/{uid_text}","body":null}}'
    Die Bridge hängt meinen Key lokal an apis.roblox.com an. Komfort-Endpunkte:
-   POST {tunnel_url}/api/roblox/game-pass        {{"universeId":{uid},"name":"...","description":"...","price":100}}
-   POST {tunnel_url}/api/roblox/developer-product {{"universeId":{uid},"name":"...","description":"...","price":100}}
+   POST {tunnel_url}/api/roblox/game-pass        {{"universeId":{uid_text},"name":"...","description":"...","price":100}}
+   POST {tunnel_url}/api/roblox/developer-product {{"universeId":{uid_text},"name":"...","description":"...","price":100}}
    Wenn Roblox 401/403 antwortet, sag mir exakt, welche Berechtigung fehlt –
    erfinde keine Daten und wiederhole die Aktion nicht endlos.
 5. Volle Endpunkt-Doku: GET {tunnel_url}/api/docs (mit Token-Header).
 
 REGELN:
-- Arbeite ausschließlich an PlaceId {pid} / UniverseId {uid}.
-- Mache nur das, worum ich dich danach bitte; frage bei destruktiven Aktionen
+{place_rule}
+- Mache nur das, worum ich dich bitte; frage bei destruktiven Aktionen
   (Löschen, Überschreiben von Scripts) vorher kurz nach.
 - Fasse am Ende kurz zusammen, was du geändert hast, inkl. der Plugin-Antworten.
-- Der Token gilt nur, solange meine Connector-App läuft. Bei 401 ist die
-  Verbindung abgelaufen – dann brauchst du einen neuen Prompt von mir."""
+- Der Token gilt nur, solange meine .bat läuft. Bei 401 ist die Verbindung
+  abgelaufen – dann brauche ich einen neuen Prompt aus der .bat."""
 
 
 # --------------------------------------------------------------------------- #
@@ -648,6 +680,114 @@ def plugin_status(port: int, token: str) -> tuple[bool, str]:
     if src and dest.read_text(encoding="utf-8", errors="replace") != src:
         return False, f"veraltet - bitte App neu starten ({dest})"
     return True, str(dest)
+
+
+# --------------------------------------------------------------------------- #
+# Zwischenablage (ohne Zusatzpakete)
+# --------------------------------------------------------------------------- #
+
+PROMPT_FILE = "prompt.txt"
+
+
+def copy_to_clipboard(text: str) -> tuple[bool, str]:
+    """Kopiert Text in die Zwischenablage. Liefert (ok, Werkzeugname).
+
+    Windows: PowerShell "Set-Clipboard" über eine temporäre UTF-8-Datei
+    (zuverlässig auch bei Umlauten/mehreren Zeilen), sonst clip.exe.
+    Linux (nur zum Testen): wl-copy / xclip / xsel, falls vorhanden.
+    """
+    if os.name == "nt":
+        tmp = None
+        try:
+            tmp = tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False,
+                                              encoding="utf-8-sig", newline="\r\n")
+            tmp.write(text)
+            tmp.close()
+            cmd = ("Get-Content -LiteralPath " + repr(tmp.name).replace("'", "''")
+                   + " -Raw -Encoding UTF8 | Set-Clipboard")
+            result = subprocess.run(
+                ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", cmd],
+                capture_output=True, text=True, timeout=30,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            if result.returncode == 0:
+                return True, "PowerShell Set-Clipboard"
+        except Exception:
+            pass
+        finally:
+            if tmp:
+                try:
+                    os.unlink(tmp.name)
+                except OSError:
+                    pass
+        try:  # Fallback: clip.exe (Konsolen-Codepage, kann Umlaute verlieren)
+            subprocess.run(["clip"], input=text, text=True, timeout=15, check=True,
+                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            return True, "clip.exe"
+        except Exception as exc:
+            return False, str(exc)
+
+    for tool in (["wl-copy"], ["xclip", "-selection", "clipboard"], ["xsel", "-b", "-i"]):
+        if shutil.which(tool[0]):
+            try:
+                subprocess.run(tool, input=text, text=True, timeout=5, check=True)
+                return True, tool[0]
+            except Exception:
+                continue
+    return False, "kein Zwischenablage-Werkzeug gefunden"
+
+
+def save_prompt(prompt: str) -> Path:
+    """Legt den Prompt als prompt.txt neben die .bat (zum späteren Kopieren)."""
+    path = app_dir() / PROMPT_FILE
+    path.write_text(prompt, encoding="utf-8")
+    return path
+
+
+def print_prompt(prompt: str) -> None:
+    print("=" * 78)
+    print(" PROMPT FÜR ARENA AI  (wird gleich in die Zwischenablage kopiert)")
+    print("=" * 78)
+    print(prompt)
+    print("=" * 78)
+
+
+def publish_prompt(tunnel_url: str, token: str, port: int, place=None,
+                   copy: bool = True) -> Path:
+    """Baut den Prompt, speichert ihn und kopiert ihn in die Zwischenablage."""
+    local_url = f"http://127.0.0.1:{port}"
+    prompt = build_prompt(tunnel_url, token, place, local_url)
+    path = save_prompt(prompt)
+    copied, tool = copy_to_clipboard(prompt) if copy else (False, "übersprungen")
+    print()
+    if copied:
+        print(f"[OK] Prompt liegt in der Zwischenablage ({tool}).")
+    else:
+        print(f"[!] Konnte nicht automatisch kopieren ({tool}).")
+        print(f"    Prompt-Datei öffnen und den Text von Hand kopieren: {path}")
+    print(f"[i] Prompt zusätzlich gespeichert in: {path}")
+    return path
+
+
+def print_connection_box(tunnel_url: str, token: str, port: int) -> None:
+    local_url = f"http://127.0.0.1:{port}"
+    line = "=" * 78
+    thin = "-" * 78
+    print(line)
+    print(" VERBINDUNGSDATEN")
+    print(thin)
+    print(f" Tunnel-URL  (fuer Arena AI)   : {tunnel_url}")
+    print(f" Token       (Arena + Plugin)  : {token}")
+    print(f" Lokale URL  (Studio-Plugin)   : {local_url}")
+    print(thin)
+    print(" SO GEHT'S")
+    print(f"  1. Roblox Studio -> Plugins-Tab -> ArenaBridge")
+    print(f"       Bridge-URL = {local_url}")
+    print(f"       Token      = {token}")
+    print(f"     -> \"Verbinden\" klicken (wird fuer das naechste Mal gespeichert)")
+    print("  2. Prompt aus der Zwischenablage bei Arena AI einfuegen und darunter")
+    print("     schreiben, was gemacht werden soll")
+    print("  3. Fenster offen lassen! Mit Strg+C beendet man Bridge + Tunnel")
+    print(line)
 
 
 # --------------------------------------------------------------------------- #
@@ -899,14 +1039,23 @@ def main() -> int:
     if any(a in ("--new-token", "/new-token", "--newtoken") for a in args):
         return run_install_plugin(rotate=True)
 
-    if any(a in ("--headless", "/headless") for a in args):
-        return run_headless()
+    if any(a in ("--gui", "/gui", "--app") for a in args):
+        try:
+            run_gui()
+        except Exception as exc:  # GUI nicht möglich -> sichtbare Fehlermeldung
+            return report_crash(exc)
+        return 0
 
-    try:
-        run_gui()
-    except Exception as exc:  # GUI nicht möglich -> trotzdem sichtbare Fehlermeldung
-        return report_crash(exc)
-    return 0
+    if any(a in ("--places", "/places") for a in args):
+        rest = [a for a in sys.argv[1:] if not a.lower() in ("--places", "/places")]
+        return run_places(rest[0] if rest else "")
+
+    # Standard (auch von der .bat aufgerufen): Konsole + Zwischenablage,
+    # kein App-Fenster. --headless/--serve sind dieselbe Sache.
+    return run_serve(
+        no_tunnel=any(a in ("--no-tunnel", "/no-tunnel") for a in args),
+        copy=not any(a in ("--keine-zwischenablage", "--no-clipboard") for a in args),
+    )
 
 
 def run_install_plugin(rotate: bool = False) -> int:
@@ -947,32 +1096,124 @@ def run_install_plugin(rotate: bool = False) -> int:
     return 0
 
 
-def run_headless() -> int:
-    """Nur Bridge + Cloudflare-Tunnel, ohne Fenster (zum Testen / für Server)."""
+def run_serve(no_tunnel: bool = False, copy: bool = True) -> int:
+    """Standardmodus: Bridge + Tunnel in der Konsole, Prompt in der Zwischenablage.
+
+    Es öffnet sich bewusst KEIN App-Fenster. In der .bat stehen danach
+    Tunnel-URL und Token; der Prompt liegt in der Zwischenablage und als
+    prompt.txt daneben. Im Studio-Plugin werden URL + Token eingetragen.
+    """
     cfg = load_config()
-    bridge = Bridge(cfg, token=ensure_bridge_token(cfg))
+    token = ensure_bridge_token(cfg)
     port = int(cfg.get("port", DEFAULT_PORT))
+
+    print(f"{APP_NAME} {APP_VERSION}")
+    print("=" * 78)
+
+    # Studio-Plugin aktualisieren (mit Vorbelegung URL + Token)
+    for folder, status in install_plugin(port, token):
+        mark = "OK" if status in ("installiert", "aktuell") else "!"
+        print(f"[{mark}] Studio-Plugin {status}: {folder}")
+    print(f"[i] Plugin-Ordner: {plugins_folder()}")
+
+    if port_in_use(port):
+        print(f"[X] Port {port} ist belegt - läuft die .bat schon in einem anderen Fenster?")
+        print(f"    Sonst in config.json einen anderen Port eintragen (z. B. {port + 1}).")
+        return 1
+
+    bridge = Bridge(cfg, token=token)
     try:
         bridge.start(port)
     except OSError as exc:
-        print(f"[X] Port {port} ist belegt ({exc}). Bitte in config.json einen "
-              f"anderen Port eintragen.", flush=True)
+        print(f"[X] Bridge konnte nicht starten: {exc}")
         return 1
-    # Plugin ebenfalls automatisch installieren/aktualisieren
-    for folder, status in install_plugin(port, bridge.token):
-        print(f"[{'OK' if status in ('installiert', 'aktuell') else '!'}] "
-              f"Studio-Plugin {status}: {folder}", flush=True)
-    print(f"[OK] Bridge: http://127.0.0.1:{port}", flush=True)
-    print(f"TOKEN={bridge.token}", flush=True)
-    Tunnel().start(port, lambda u: print(f"Tunnel: {u}\nTOKEN={bridge.token}", flush=True),
-                   lambda e: print(e, flush=True))
-    print("[i] Laeuft. Beenden mit Strg+C.", flush=True)
+
+    print(f"[OK] Bridge läuft lokal auf http://127.0.0.1:{port}")
+    print()
+
+    if no_tunnel:
+        # Nur zum Testen / ohne Internet: Prompt mit lokaler URL
+        local = f"http://127.0.0.1:{port}"
+        print("[!] --no-tunnel: Ohne Cloudflare-Tunnel ist die Bridge NUR lokal erreichbar.")
+        print("    Arena AI kann sie so nicht erreichen - der Prompt enthält die lokale URL.")
+        print()
+        print_connection_box(local, token, port)
+        publish_prompt(local, token, port, copy=copy)
+        print("\n[i] Läuft. Beenden mit Strg+C.")
+        try:
+            threading.Event().wait()
+        except KeyboardInterrupt:
+            print("\n[i] Beende ...")
+        finally:
+            bridge.stop()
+        return 0
+
+    tunnel = Tunnel()
+    state = {"published": False}
+
+    def on_url(url: str) -> None:
+        if state["published"]:
+            return
+        state["published"] = True
+        print()
+        print_connection_box(url, token, port)
+        publish_prompt(url, token, port)
+        print("\n[i] Läuft weiter. Fenster offen lassen! Beenden mit Strg+C.")
+        print("[i] Prompt nochmal kopieren: prompt.txt öffnen, oder .bat neu starten.")
+
+    def on_error(message: str) -> None:
+        print(f"[!] Tunnel: {message}")
+        print("[i] Die Bridge läuft trotzdem lokal - ohne Tunnel ist Arena AI aber")
+        print("    nicht erreichbar. Internet/Firewall prüfen und .bat neu starten.")
+
+    print("[i] Starte Cloudflare-Tunnel (beim ersten Mal wird cloudflared geladen) ...")
+    tunnel.start(port, on_url, on_error)
+
     try:
+        # Offline-Fallback: nach 90 s ohne Tunnel trotzdem Prompt anbieten
+        waited = 0
+        while not state["published"] and waited < 90:
+            time.sleep(1)
+            waited += 1
+        if not state["published"]:
+            print("\n[!] Kein Tunnel zustande gekommen. Prompt mit lokaler URL:")
+            print_connection_box(f"http://127.0.0.1:{port}", token, port)
+            publish_prompt(f"http://127.0.0.1:{port}", token, port, )
         threading.Event().wait()
     except KeyboardInterrupt:
-        pass
+        print("\n[i] Beende Bridge + Tunnel ...")
     finally:
+        tunnel.stop()
         bridge.stop()
+    return 0
+
+
+def run_places(username: str) -> int:
+    """Zeigt die Places eines Roblox-Users mit PlaceId/UniverseId (ohne GUI)."""
+    username = (username or "").strip()
+    if not username:
+        print("Aufruf:  ArenaStudioConnector.bat /places <Roblox-Username>")
+        return 1
+    print(f"{APP_NAME} {APP_VERSION} - Places von {username}")
+    print("=" * 66)
+    user_id = resolve_user_id(username)
+    if not user_id:
+        print(f"[X] Username '{username}' nicht gefunden.")
+        return 1
+    try:
+        places = fetch_user_places(user_id)
+    except Exception as exc:
+        print(f"[X] Places konnten nicht geladen werden: {exc}")
+        return 1
+    if not places:
+        print("[i] Keine öffentlichen Places gefunden.")
+        return 0
+    for p in places:
+        print(f"- {p['name']}")
+        print(f"    PlaceId: {p['placeId']}   UniverseId: {p['universeId']}   "
+              f"Besuche: {p.get('visits', 0)}")
+    print()
+    print("[i] Die offene Place erkennt Arena automatisch über /api/status.")
     return 0
 
 

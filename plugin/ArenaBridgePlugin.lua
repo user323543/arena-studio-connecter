@@ -1,31 +1,189 @@
 -- ArenaBridgePlugin.lua  –  Arena AI <-> Roblox Studio Bridge
--- Wird von der Connector-App beim Start AUTOMATISCH installiert:
+-- Wird von der Connector-App automatisch installiert:
 --   %LOCALAPPDATA%\Roblox\Plugins\ArenaBridgePlugin.lua
--- Platzhalter unten werden dabei durch die echten Werte ersetzt.
--- Das Plugin spricht NUR mit 127.0.0.1 (dein PC), niemals direkt mit dem Internet.
-local BRIDGE_URL = "__BRIDGE_URL__"       -- z. B. http://127.0.0.1:8765
-local BRIDGE_TOKEN = "__BRIDGE_TOKEN__"   -- gleicher Token wie in der App
+--
+-- So benutzt du es:
+--   1. ArenaStudioConnector.bat starten -> dort stehen Tunnel-URL + Token
+--   2. In Studio: Plugins-Tab -> "ArenaBridge" -> hier URL + Token eintragen
+--   3. "Verbinden" klicken. Das Plugin merkt sich beides für das nächste Mal.
+--
+-- Das Plugin spricht nur mit deiner Bridge (standardmäßig 127.0.0.1) –
+-- niemals direkt mit dem Internet.
+
+-- Vorbelegung: wird beim Installieren von der App eingesetzt.
+-- Du kannst die Felder im Plugin jederzeit überschreiben.
+local DEFAULT_URL = "__BRIDGE_URL__"       -- z. B. http://127.0.0.1:8765
+local DEFAULT_TOKEN = "__BRIDGE_TOKEN__"   -- gleicher Token wie in der .bat
 
 local HttpService = game:GetService("HttpService")
+local SETTING_URL = "ArenaBridgeUrl"
+local SETTING_TOKEN = "ArenaBridgeToken"
+
+local function setting(key, fallback)
+	local ok, value = pcall(function() return plugin:GetSetting(key) end)
+	if ok and typeof(value) == "string" and value ~= "" then return value end
+	return fallback
+end
+
+local bridgeUrl = setting(SETTING_URL, DEFAULT_URL)
+local bridgeToken = setting(SETTING_TOKEN, DEFAULT_TOKEN)
+
+--------------------------------------------------------------------------------
+-- UI (Dock-Widget mit Feldern für URL + Token)
+--------------------------------------------------------------------------------
+
+local gui = nil
+do
+	local ok, result = pcall(function()
+		local info = DockWidgetPluginGuiInfo.new(Enum.InitialDockState.Right, false, false, 340, 340, 300, 280)
+		return plugin:CreateDockWidgetPluginGui("ArenaBridgeDock", info)
+	end)
+	if ok then gui = result end
+end
+if gui then
+	gui.Title = "ArenaBridge"
+	gui.Name = "ArenaBridge"
+end
+
+local ui = {}
+if gui then
+	local root = Instance.new("Frame")
+	root.Size = UDim2.new(1, 0, 1, 0)
+	root.BackgroundColor3 = Color3.fromRGB(30, 30, 34)
+	root.BorderSizePixel = 0
+	root.Parent = gui
+
+	local layout = Instance.new("UIListLayout")
+	layout.Padding = UDim.new(0, 6)
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+	layout.Parent = root
+
+	local padding = Instance.new("UIPadding")
+	padding.PaddingTop = UDim.new(0, 10)
+	padding.PaddingLeft = UDim.new(0, 10)
+	padding.PaddingRight = UDim.new(0, 10)
+	padding.Parent = root
+
+	local function label(text, size, color, order)
+		local l = Instance.new("TextLabel")
+		l.Text = text
+		l.Size = UDim2.new(1, 0, 0, size)
+		l.BackgroundTransparency = 1
+		l.Font = Enum.Font.Gotham
+		l.TextSize = 13
+		l.TextColor3 = color or Color3.fromRGB(235, 235, 240)
+		l.TextXAlignment = Enum.TextXAlignment.Left
+		l.TextWrapped = true
+		l.LayoutOrder = order
+		l.Parent = root
+		return l
+	end
+
+	local function box(placeholder, text, order)
+		local b = Instance.new("TextBox")
+		b.Size = UDim2.new(1, 0, 0, 30)
+		b.BackgroundColor3 = Color3.fromRGB(45, 45, 52)
+		b.BorderSizePixel = 0
+		b.Font = Enum.Font.Code
+		b.TextSize = 13
+		b.TextColor3 = Color3.fromRGB(235, 235, 240)
+		b.PlaceholderText = placeholder
+		b.Text = text or ""
+		b.ClearTextOnFocus = false
+		b.TextXAlignment = Enum.TextXAlignment.Left
+		b.LayoutOrder = order
+		b.Parent = root
+		return b
+	end
+
+	label("Arena Studio Connector", 16, Color3.fromRGB(120, 220, 160), 1)
+	label("1) Bridge-URL  2) Token  3) Verbinden", 13, Color3.fromRGB(170, 170, 180), 2)
+	label("Bridge-URL (steht in der .bat als \"Lokale URL\")", 13, nil, 3)
+	ui.url = box("http://127.0.0.1:8765", bridgeUrl, 4)
+	label("Token (steht in der .bat)", 13, nil, 5)
+	ui.token = box("Token aus der .bat", bridgeToken, 6)
+
+	local connect = Instance.new("TextButton")
+	connect.Size = UDim2.new(1, 0, 0, 34)
+	connect.BackgroundColor3 = Color3.fromRGB(60, 160, 110)
+	connect.BorderSizePixel = 0
+	connect.Font = Enum.Font.GothamMedium
+	connect.TextSize = 14
+	connect.TextColor3 = Color3.new(1, 1, 1)
+	connect.Text = "Verbinden"
+	connect.LayoutOrder = 7
+	connect.Parent = root
+	ui.connect = connect
+
+	ui.status = Instance.new("TextLabel")
+	ui.status.Size = UDim2.new(1, 0, 0, 78)
+	ui.status.BackgroundTransparency = 1
+	ui.status.Font = Enum.Font.Gotham
+	ui.status.TextSize = 12
+	ui.status.TextColor3 = Color3.fromRGB(190, 190, 200)
+	ui.status.TextXAlignment = Enum.TextXAlignment.Left
+	ui.status.TextYAlignment = Enum.TextYAlignment.Top
+	ui.status.TextWrapped = true
+	ui.status.Text = "Nicht verbunden."
+	ui.status.LayoutOrder = 8
+	ui.status.Parent = root
+
+	ui.hint = Instance.new("TextLabel")
+	ui.hint.Size = UDim2.new(1, 0, 0, 40)
+	ui.hint.BackgroundTransparency = 1
+	ui.hint.Font = Enum.Font.Gotham
+	ui.hint.TextSize = 11
+	ui.hint.TextColor3 = Color3.fromRGB(150, 150, 160)
+	ui.hint.TextXAlignment = Enum.TextXAlignment.Left
+	ui.hint.TextYAlignment = Enum.TextYAlignment.Top
+	ui.hint.TextWrapped = true
+	ui.hint.Text = "URL + Token werden lokal gespeichert und beim nächsten Öffnen wieder eingesetzt."
+	ui.hint.LayoutOrder = 9
+	ui.hint.Parent = root
+end
+
+-- Fallback ohne Dock-Widget: Werte aus der Installation benutzen
 local toolbar = plugin:CreateToolbar("Arena AI")
 local button = toolbar:CreateButton("ArenaBridge", "Mit Arena-Bridge verbinden/trennen", "rbxassetid://0")
 button.ClickableWhenViewportHidden = true
 
-local enabled = false
-button:SetActive(false)
+--------------------------------------------------------------------------------
+-- Verbindung
+--------------------------------------------------------------------------------
 
-local function headers()
-	return {
-		["Authorization"] = "Bearer " .. BRIDGE_TOKEN,
-		["Content-Type"] = "application/json",
-	}
+local enabled = false
+local loopRunning = false
+
+local function setStatus(text, good)
+	if ui.status then
+		ui.status.Text = text
+		ui.status.TextColor3 = good == true and Color3.fromRGB(120, 220, 160)
+			or (good == false and Color3.fromRGB(240, 130, 130)
+			or Color3.fromRGB(190, 190, 200))
+	end
+	print("[ArenaBridge] " .. text)
+end
+
+local function currentUrl()
+	local value = ui.url and ui.url.Text or bridgeUrl
+	value = (value or ""):gsub("%s+$", "")
+	if value == "" then value = DEFAULT_URL end
+	return value
+end
+
+local function currentToken()
+	local value = ui.token and ui.token.Text or bridgeToken
+	return ((value or ""):gsub("%s+$", ""))
 end
 
 local function request(method, path, body)
 	return HttpService:RequestAsync({
-		Url = BRIDGE_URL .. path,
+		Url = currentUrl() .. path,
 		Method = method,
-		Headers = headers(),
+		Headers = {
+			["Authorization"] = "Bearer " .. currentToken(),
+			["Content-Type"] = "application/json",
+		},
 		Body = body and HttpService:JSONEncode(body) or nil,
 	})
 end
@@ -165,6 +323,9 @@ local function loop()
 	while enabled do
 		local ok, res = pcall(request, "GET", "/plugin/poll")
 		if ok and res and res.Success then
+			if ui.status then
+				setStatus("Verbunden ✓  PlaceId " .. tostring(game.PlaceId), true)
+			end
 			local decoded = HttpService:JSONDecode(res.Body)
 			local cmd = decoded and decoded.command
 			if cmd then
@@ -178,21 +339,70 @@ local function loop()
 					error = okCmd and nil or tostring(result),
 				})
 			end
+		elseif ok and res and res.StatusCode == 401 then
+			setStatus("Token falsch (HTTP 401). Bitte Token aus der .bat neu eintragen.", false)
+			enabled = false
+		else
+			setStatus("Keine Verbindung zu " .. currentUrl() .. "\nLäuft die .bat noch?", false)
+			enabled = false
 		end
 		if os.clock() - lastBeat > 5 then heartbeat(); lastBeat = os.clock() end
 		task.wait(0.8)
 	end
+	if ui.status then setStatus("Nicht verbunden.", nil) end
+	loopRunning = false
+	button:SetActive(false)
+	if ui.connect then ui.connect.Text = "Verbinden" end
+end
+
+local function startConnection()
+	local url = currentUrl()
+	local token = currentToken()
+	if url == "" or not url:match("^https?://") then
+		setStatus("Bitte eine Bridge-URL angeben, z. B. http://127.0.0.1:8765", false)
+		return
+	end
+	if token == "" then
+		setStatus("Bitte den Token aus der .bat eintragen.", false)
+		return
+	end
+	bridgeUrl = url
+	bridgeToken = token
+	pcall(function()
+		plugin:SetSetting(SETTING_URL, url)
+		plugin:SetSetting(SETTING_TOKEN, token)
+	end)
+	enabled = true
+	button:SetActive(true)
+	if ui.connect then ui.connect.Text = "Trennen" end
+	setStatus("Verbinde mit " .. url .. " …", nil)
+	if not loopRunning then
+		loopRunning = true
+		task.spawn(loop)
+	end
+end
+
+local function stopConnection()
+	enabled = false
+	if ui.connect then ui.connect.Text = "Verbinden" end
+	button:SetActive(false)
+end
+
+if ui.connect then
+	ui.connect.MouseButton1Click:Connect(function()
+		if enabled then stopConnection() else startConnection() end
+	end)
 end
 
 button.Click:Connect(function()
-	enabled = not enabled
-	button:SetActive(enabled)
-	if enabled then
-		print("[ArenaBridge] Verbinde mit " .. BRIDGE_URL .. " – PlaceId " .. tostring(game.PlaceId))
-		task.spawn(loop)
-	else
-		print("[ArenaBridge] Getrennt.")
-	end
+	if enabled then stopConnection() else startConnection() end
 end)
 
-print("[ArenaBridge] Geladen. Toolbar-Button 'ArenaBridge' klicken zum Verbinden.")
+-- Beim ersten Start direkt verbinden, wenn URL + Token schon gesetzt sind
+-- (dann muss man in Studio gar nichts mehr eintippen).
+if bridgeToken ~= "" and bridgeToken ~= "__BRIDGE_TOKEN__"
+	and bridgeUrl ~= "" and bridgeUrl ~= "__BRIDGE_URL__" then
+	task.defer(startConnection)
+end
+
+print("[ArenaBridge] Geladen. Plugins-Tab -> ArenaBridge: URL + Token aus der .bat eintragen, dann 'Verbinden'.")

@@ -7,6 +7,8 @@ goto-Ziele, Klammer-Bloecke und der Inhalt des Release-ZIPs.
 import json
 import os
 import re
+import time
+import urllib.request
 from unittest import mock
 import subprocess
 import sys
@@ -131,7 +133,7 @@ class StarterTest(unittest.TestCase):
         low = self.text.lower()
         self.assertNotIn("pyinstaller", low)
         self.assertNotIn("dist\\", low)
-        self.assertIn("--headless", low)  # laeuft auch ohne Fenster
+        self.assertIn("--serve", low)  # Standard: Konsole + Zwischenablage
 
     def test_version_wird_aus_version_datei_gelesen(self):
         # Bewusst kein Parsen der Python-Datei in for-Optionen (Anfuehrungszeichen
@@ -279,6 +281,122 @@ class PluginInstallationTest(unittest.TestCase):
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
         self.assertIn("ZIP", result.stdout)
         self.assertFalse((self.plugins / "ArenaBridgePlugin.lua").exists())
+
+
+class ServeModusTest(unittest.TestCase):
+    """Neuer Ablauf: keine App, Token + URL in der Konsole, Prompt in der
+    Zwischenablage, URL + Token im Studio-Plugin eintragen."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        (self.root / "plugin").mkdir()
+        (self.root / "plugin" / "ArenaBridgePlugin.lua").write_text(
+            (ROOT / "plugin" / "ArenaBridgePlugin.lua").read_text(encoding="utf-8"),
+            encoding="utf-8")
+        self.plugins = self.root / "plugins"
+        self.env = {**os.environ,
+                    "ARENA_APP_DIR": str(self.root),
+                    "ARENA_PLUGIN_DIR": str(self.plugins),
+                    "PYTHONIOENCODING": "utf-8"}
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_no_tunnel_schreibt_prompt_und_zeigt_token(self):
+        log = self.root / "serve.log"
+        with open(log, "w", encoding="utf-8") as out:
+            proc = subprocess.Popen(
+                [sys.executable, "-u", str(ROOT / "arena_studio_connector.py"),
+                 "--no-tunnel", "--keine-zwischenablage"],
+                stdout=out, stderr=subprocess.STDOUT, env=self.env, cwd=str(self.root))
+            try:
+                deadline = time.time() + 45
+                while time.time() < deadline:
+                    time.sleep(0.5)
+                    text = log.read_text(encoding="utf-8", errors="replace")
+                    if "Laeuft" in text or "Läuft" in text:
+                        break
+            finally:
+                proc.kill()
+                proc.wait(timeout=10)
+
+        out_text = log.read_text(encoding="utf-8", errors="replace")
+        cfg = json.loads((self.root / "config.json").read_text(encoding="utf-8"))
+        token = cfg["bridge_token"]
+        prompt_file = self.root / "prompt.txt"
+
+        self.assertIn("VERBINDUNGSDATEN", out_text)
+        self.assertIn(token, out_text, "Token fehlt in der Konsolenausgabe")
+        self.assertIn("Studio-Plugin", out_text)
+        self.assertTrue(prompt_file.exists(), "prompt.txt wurde nicht geschrieben")
+        prompt = prompt_file.read_text(encoding="utf-8")
+        self.assertIn(token, prompt)
+        self.assertIn("http://127.0.0.1:8765", prompt)
+        self.assertIn("MEINE AUFGABE", prompt)
+        self.assertIn("/api/status", prompt)
+
+    def test_installiert_das_plugin_mit_token_vorbelegung(self):
+        log = self.root / "serve.log"
+        with open(log, "w", encoding="utf-8") as out:
+            proc = subprocess.Popen(
+                [sys.executable, "-u", str(ROOT / "arena_studio_connector.py"),
+                 "--no-tunnel", "--keine-zwischenablage"],
+                stdout=out, stderr=subprocess.STDOUT, env=self.env, cwd=str(self.root))
+            try:
+                deadline = time.time() + 45
+                while time.time() < deadline:
+                    time.sleep(0.5)
+                    if "Laeuft" in log.read_text(encoding="utf-8", errors="replace"):
+                        break
+            finally:
+                proc.kill()
+                proc.wait(timeout=10)
+        dest = self.plugins / "ArenaBridgePlugin.lua"
+        self.assertTrue(dest.exists())
+        lua = dest.read_text(encoding="utf-8")
+        token = json.loads((self.root / "config.json").read_text(encoding="utf-8"))["bridge_token"]
+        self.assertIn(token, lua, "Token nicht als Vorbelegung im Plugin")
+
+    def test_zwischenablage_liefert_ergebnis(self):
+        ok, tool = arena.copy_to_clipboard("Test")
+        self.assertIsInstance(ok, bool)
+        self.assertTrue(tool)
+
+    def test_prompt_hat_aufgaben_platz(self):
+        p = arena.build_prompt("https://x.trycloudflare.com", "TOK")
+        self.assertIn("MEINE AUFGABE", p)
+        self.assertIn("<HIER EINTRAGEN", p)
+        self.assertLess(p.index("MEINE AUFGABE"), p.index("SO NUTZT DU"), 
+                        "Aufgabe muss vor der Anleitung stehen")
+        self.assertIn("Plugin", p)
+
+
+class PluginUiTest(unittest.TestCase):
+    def setUp(self):
+        self.lua = (ROOT / "plugin" / "ArenaBridgePlugin.lua").read_text(encoding="utf-8")
+
+    def test_plugin_hat_eingabefelder_fuer_url_und_token(self):
+        self.assertIn("CreateDockWidgetPluginGui", self.lua)
+        self.assertIn("TextBox", self.lua)
+        self.assertIn("Bridge-URL", self.lua)
+        self.assertIn("Token", self.lua)
+        self.assertIn('SETTING_URL', self.lua)
+        self.assertIn('SETTING_TOKEN', self.lua)
+
+    def test_plugin_merkt_sich_die_eingaben(self):
+        self.assertIn("plugin:SetSetting", self.lua)
+        self.assertIn("plugin:GetSetting", self.lua)
+
+    def test_plugin_prueft_url_und_token(self):
+        self.assertIn("^https?://", self.lua)
+        self.assertIn("401", self.lua)
+
+    def test_plugin_hat_weiter_alle_kommandos(self):
+        for cmd in ("place_info", "list_children", "get_tree", "get_script",
+                    "set_script", "create_instance", "set_property",
+                    "delete_instance", "execute_luau"):
+            self.assertIn(f"handlers.{cmd}", self.lua)
 
 
 class CliTest(unittest.TestCase):
