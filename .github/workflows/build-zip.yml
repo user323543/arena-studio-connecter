@@ -153,7 +153,7 @@ jobs:
         shell: cmd
         run: |
           rem Ausgabe ueber cmd umleiten - robuster als PowerShell-Pipelines
-          python tests/windows_smoke.py > windows_smoke.log 2>&1
+          python -u tests/windows_smoke.py > windows_smoke.log 2>&1
           set RC=%errorlevel%
           type windows_smoke.log
           if not "%RC%"=="0" (

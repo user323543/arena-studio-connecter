@@ -37,7 +37,7 @@ BASE = f"http://127.0.0.1:{PORT}"
 
 
 def fail(message: str, log: str = "") -> None:
-    print(f"[X] {message}")
+    print(f"[X] {message}", flush=True)
     if log:
         print("-" * 70)
         print(log[-4000:])
@@ -61,6 +61,7 @@ def read_clipboard() -> str:
 
 
 def main() -> int:
+    print("[i] Smoketest startet", flush=True)
     tmp = tempfile.TemporaryDirectory()
     app_dir = Path(tmp.name)
     env = {**os.environ,
@@ -82,10 +83,11 @@ def main() -> int:
             if not line:
                 break
             log += line
-            print(line, end="")
+            print(line, end="", flush=True)
             if "VERBINDUNGSDATEN" in log and "SO GEHT'S" in log:
                 break
 
+        print("[i] Leseschleife beendet", flush=True)
         if "VERBINDUNGSDATEN" not in log:
             fail("Konsole zeigt keine Verbindungsdaten", log)
 
@@ -129,6 +131,7 @@ def main() -> int:
         print("[OK] /api/status antwortet mit dem Token")
 
         # Zwischenablage (nur Windows aussagekraeftig)
+        print("[i] Pruefe Zwischenablage ...", flush=True)
         if os.name == "nt":
             clip = read_clipboard()
             if token not in clip:
